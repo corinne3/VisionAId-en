@@ -49,6 +49,9 @@ Phone (web page)                    PC (Python, multi-process real-time graph)
 📘 Documentation:
 - [docs/en/technical_overview.md](docs/en/technical_overview.md): architecture, key maths, design decisions
 - [docs/en/COMMANDS.md](docs/en/COMMANDS.md): all commands, in English
+- [docs/en/REPORT_PHASE2.md](docs/en/REPORT_PHASE2.md): the team's phase 2 report (phone → path), in English
+- [docs/en/DECISIONS.md](docs/en/DECISIONS.md): the team's full decision log (every technical choice and rejected alternative), in English
+- [docs/en/phone_setup.md](docs/en/phone_setup.md): iPhone setup and troubleshooting, in English
 - [docs/dossier_technique_fr.md](docs/dossier_technique_fr.md): full technical dossier in French (maths, every technique explained, jury Q&A)
 
 ---
