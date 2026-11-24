@@ -50,8 +50,9 @@ Edit-File "config\default.yaml" @(
     @("max_fps: 15.0", "max_fps: 3.0"),
     @("openai/whisper-small", "openai/whisper-base")
 )
+# the leading comma keeps a one-pair list as a list (PowerShell would otherwise unroll it)
 Edit-File "src\visionaid\apps\live_blocks.py" @(
-    @("stale_s: float = 1.5", "stale_s: float = 6.0")
+    ,@("stale_s: float = 1.5", "stale_s: float = 6.0")
 )
 git --no-pager diff --stat
 
