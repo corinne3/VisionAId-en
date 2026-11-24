@@ -1,4 +1,4 @@
-"""Évaluation du simulateur : N graines par scénario (en parallèle), statistiques, vidéos."""
+"""Simulator evaluation: N seeds per scenario (in parallel), statistics, videos."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _one(args):
     from visionaid.sim.scenarios import SCENARIOS, real_map
     from visionaid.utils.config import _to_dataclass
 
-    if name == "real":  # carte réelle encombrée : rayon de corps réduit (voir DECISIONS.md)
+    if name == "real":  # cluttered real map: reduced body radius (see DECISIONS.md)
         import copy
 
         cfg_raw = copy.deepcopy(cfg_raw)
@@ -92,8 +92,8 @@ def evaluate(
     real_map_path = str(real_map_path or resolve_path(cfg.paths.outputs) / "real_map.npz")
     jobs = [(s, k, raw, real_map_path) for s in scenarios for k in range(n)]
     workers = workers or max(1, (os.cpu_count() or 2) - 1)
-    # compile les noyaux numba une fois (cache disque) avant de lancer les workers :
-    # une compilation concurrente dans tous les workers les faisait planter
+    # compile the numba kernels once (disk cache) before starting the workers:
+    # a concurrent compilation in all the workers made them crash
     from visionaid.audio.binaural import spatialize
     from visionaid.planning.astar import warmup as wa
     from visionaid.planning.dstar_lite import warmup as wd
@@ -108,7 +108,7 @@ def evaluate(
         for j, f in futs:
             try:
                 r = f.get(timeout=600)
-            except Exception as e:  # noqa: BLE001 - worker mort ou bloqué : consigné comme erreur
+            except Exception as e:  # noqa: BLE001 - dead or stuck worker: recorded as an error
                 r = {"scenario": j[0], "seed": j[1], "error": repr(e)}
             if r is not None:
                 rows.append(r)

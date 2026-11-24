@@ -1,21 +1,21 @@
-"""Choix du son à jouer à partir d'une consigne de guidage.
+"""Choice of the sound to play from a guidance instruction.
 
-Toute la logique sonore est ici, en un seul endroit : le téléphone (Web Audio) et le rendu hors
-ligne (WAV) ne font qu'exécuter les `SoundCommand` produites.
+All the sound logic is here, in one place: the phone (Web Audio) and the offline
+rendering (WAV) only execute the `SoundCommand`s produced.
 
-Deux couches superposées, pour que l'utilisateur entende en même temps où aller et ce qui gêne :
+Two overlaid layers, so that the user hears at the same time where to go and what is in the way:
 
-- **chemin** (son 2) : note répétée, placée par un pan stéréo vers la direction du chemin ; le
-  tempo accélère à l'approche de la cible. Objet pas encore trouvé : son de recherche (son 4) ;
-- **obstacles** (son 1) : nappe en boucle, centrée, de plus en plus forte quand un obstacle du
-  couloir frontal se rapproche (plafonnée sous le chemin, pour ne pas stresser) ;
-- **arrivée** (son 3) : une fois, puis silence ;
-- **repérage perdu** : plus de chemin, nappe des obstacles à volume moyen (« arrête-toi »).
+- **path** (sound 2): repeated note, placed by a stereo pan towards the direction of the path; the
+  tempo speeds up when approaching the target. Object not found yet: search sound (sound 4);
+- **obstacles** (sound 1): looping pad, centred, louder and louder when an obstacle in the
+  frontal corridor gets closer (capped below the path, so as not to stress);
+- **arrival** (sound 3): once, then silence;
+- **tracking lost**: no more path, obstacle pad at medium volume ("stop").
 
-Pan (comme le panoramique d'une table de mixage) : pan = azimut / 90°, borné à ±1 ; à ±1 tout
-le son est dans une seule oreille. Chemin derrière : tout d'un côté, celui du demi-tour le plus
-court, gardé tant que le chemin ne passe pas franchement de l'autre côté (hystérésis autour de
-180°, sinon le son sauterait d'une oreille à l'autre).
+Pan (like the panoramic knob of a mixing desk): pan = azimuth / 90°, bounded to ±1; at ±1 all
+the sound is in a single ear. Path behind: everything on one side, the side of the shortest
+U-turn, kept as long as the path does not clearly move to the other side (hysteresis around
+180°, otherwise the sound would jump from one ear to the other).
 """
 
 from __future__ import annotations
@@ -31,26 +31,26 @@ STATE_MODE = {
     "SEARCHING": SEARCH,
     "NAVIGATING": GUIDE,
     "APPROACHING": GUIDE,
-    "OBSTACLE_ALERT": GUIDE,  # le chemin continue ; l'obstacle est la couche du dessus
+    "OBSTACLE_ALERT": GUIDE,  # the path continues; the obstacle is the top layer
     "ARRIVED": ARRIVED,
     "TRACKING_LOST": LOST,
 }
 MUTE_DB = -120.0
-SOUND_KEYS = ("guide", "search", "arrived", "obstacle")  # sons de `audio.sounds`
+SOUND_KEYS = ("guide", "search", "arrived", "obstacle")  # sounds from `audio.sounds`
 
 
 def equal_power(pan):
-    """Gains (gauche, droite) à puissance constante ; pan −1 → (1, 0), 0 → (0,707, 0,707)."""
+    """Constant-power (left, right) gains; pan −1 → (1, 0), 0 → (0.707, 0.707)."""
     th = (np.clip(np.asarray(pan, float), -1.0, 1.0) + 1.0) * math.pi / 4
     return np.cos(th), np.sin(th)
 
 
 class PanTracker:
-    """Azimut (rad, gauche +) → pan (−1 gauche … +1 droite), avec hystérésis derrière."""
+    """Azimuth (rad, left +) → pan (−1 left … +1 right), with hysteresis behind."""
 
     def __init__(self, hold_deg: float = 150.0) -> None:
         self.hold = math.radians(float(hold_deg))
-        self.side = 0.0  # côté retenu quand le chemin est derrière : +1 gauche, −1 droite
+        self.side = 0.0  # side kept when the path is behind: +1 left, −1 right
 
     def __call__(self, az: float) -> float:
         az = math.atan2(math.sin(az), math.cos(az))
@@ -59,7 +59,7 @@ class PanTracker:
             return float(np.clip(-az / (math.pi / 2), -1.0, 1.0))
         s = 1.0 if az > 0 else -1.0
         if self.side == 0.0 or (s != self.side and abs(az) < self.hold):
-            self.side = s  # entrée derrière, ou chemin passé franchement de l'autre côté
+            self.side = s  # entering behind, or path clearly moved to the other side
         return -self.side
 
     def reset(self) -> None:
@@ -67,7 +67,7 @@ class PanTracker:
 
 
 class SoundDirector:
-    """Convertit les `GuidanceCue` successives en `SoundCommand`."""
+    """Converts successive `GuidanceCue`s into `SoundCommand`s."""
 
     def __init__(self, cfg_audio) -> None:
         a = cfg_audio
@@ -87,16 +87,16 @@ class SoundDirector:
         self.t_arrived = -math.inf
 
     def interval(self, distance: float) -> float:
-        """Espacement entre deux notes du chemin : constant au loin, puis de plus en plus court
-        sous `guide_accel_m`, jusqu'à `guide_interval_near_s` à `guide_near_m`."""
+        """Spacing between two path notes: constant when far, then shorter and shorter
+        below `guide_accel_m`, down to `guide_interval_near_s` at `guide_near_m`."""
         if not math.isfinite(distance):
             return self.far_s
         x = float(np.clip((distance - self.near_m) / max(self.accel_m - self.near_m, 1e-6), 0, 1))
         return self.near_s + (self.far_s - self.near_s) * x
 
     def obstacle_db(self, distance: float) -> float:
-        """Gain de la nappe des obstacles : muette au-delà de `obstacle_far_m`, puis linéaire en
-        dB jusqu'à `obstacle_max_db` à `obstacle_near_m`."""
+        """Gain of the obstacle pad: muted beyond `obstacle_far_m`, then linear in
+        dB up to `obstacle_max_db` at `obstacle_near_m`."""
         if not math.isfinite(distance) or distance >= self.ob_far:
             return MUTE_DB
         x = float(np.clip((self.ob_far - distance) / max(self.ob_far - self.ob_near, 1e-6), 0, 1))
@@ -105,7 +105,7 @@ class SoundDirector:
     def command(self, cue: GuidanceCue) -> SoundCommand:
         mode = STATE_MODE.get(cue.state, SILENT)
         az = float(getattr(cue, "guide_azimuth", math.nan))
-        if not math.isfinite(az):  # consigne sans direction du chemin (anciens enregistrements)
+        if not math.isfinite(az):  # instruction without path direction (old recordings)
             az = float(cue.azimuth) if cue.state != "OBSTACLE_ALERT" else 0.0
         if mode in (SEARCH, GUIDE):
             pan = self.pan(az)

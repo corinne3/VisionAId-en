@@ -1,12 +1,12 @@
-"""Guidage sonore d'une session enregistrée : piste WAV (et vidéo caméra avec le son).
+"""Sound guidance of a recorded session: WAV track (and camera video with the sound).
 
-La session est rejouée une fois dans le pipeline offline (mêmes modules que le direct) ; les
-consignes de guidage sont gardées dans `consignes.json`. Les lancements suivants ne refont que
-l'audio, en quelques secondes : pratique pour régler les sons (`config/default.yaml`, section
-`audio`) et réécouter aussitôt. `--recompute` rejoue la vision (après un changement du guidage).
+The session is replayed once in the offline pipeline (same modules as live); the
+guidance instructions are kept in `consignes.json`. Later runs only redo
+the audio, in a few seconds: handy for tuning the sounds (`config/default.yaml`, section
+`audio`) and listening again right away. `--recompute` replays the vision (after a guidance change).
 
-Sorties dans `outputs/son/<session>/` : `guidage.wav` (au casque), `consignes.json`, et avec
-`--video` `camera_son.mp4` (image de la caméra, son joué écrit en bas, piste sonore).
+Outputs in `outputs/son/<session>/`: `guidage.wav` (with headphones), `consignes.json`, and with
+`--video` `camera_son.mp4` (camera image, sound played written at the bottom, sound track).
 
     uv run python -m visionaid.apps.render_sound data/sessions/20261121-182903_gourde_direct2 --video
 """
@@ -31,7 +31,7 @@ CACHE = "consignes.json"
 
 
 def compute_cues(session_dir) -> dict:
-    """Rejoue la session (vision, carte, chemin, guidage) ; consignes horodatées + durée."""
+    """Replays the session (vision, map, path, guidance); timestamped instructions + duration."""
     from visionaid.io.session import SessionImu, SessionSource, load_session
     from visionaid.perception.depth import video_depth_estimator
     from visionaid.perception.pipeline import run_video_perception
@@ -51,7 +51,7 @@ def compute_cues(session_dir) -> dict:
         pipe.step(f, by.get(f.frame_idx))
         n += 1
         if n % 100 == 0:
-            log.info("Rejeu : image %d", n)
+            log.info("Replay: frame %d", n)
     t0 = pipe.records[0].t if pipe.records else 0.0
     return {
         "session": str(Path(session_dir).resolve().name),
@@ -66,7 +66,7 @@ def compute_cues(session_dir) -> dict:
 def load_or_compute(session_dir, out: Path, recompute: bool = False) -> dict:
     p = out / CACHE
     if p.exists() and not recompute:
-        log.info("Consignes reprises de %s (--recompute pour rejouer la vision)", p)
+        log.info("Instructions reused from %s (--recompute to replay the vision)", p)
         return json.loads(p.read_text())
     data = compute_cues(session_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -75,21 +75,21 @@ def load_or_compute(session_dir, out: Path, recompute: bool = False) -> dict:
 
 
 def caption(cmd) -> str:
-    """Texte du son joué (ASCII : police OpenCV)."""
+    """Text of the sound played (ASCII: OpenCV font)."""
     if cmd is None:
-        return "Son : silence"
+        return "Sound: silence"
     if cmd.mode in ("guide", "search"):
         p = cmd.pan
         side = (
-            "centre" if abs(p) < 0.05 else f"{abs(p) * 100:.0f}% {'gauche' if p < 0 else 'droite'}"
+            "centre" if abs(p) < 0.05 else f"{abs(p) * 100:.0f}% {'left' if p < 0 else 'right'}"
         )
-        txt = "chemin" if cmd.mode == "guide" else "recherche"
-        s = f"Son : {txt}, pan {side}, une note / {cmd.interval_s:.2f} s"
+        txt = "path" if cmd.mode == "guide" else "search"
+        s = f"Sound: {txt}, pan {side}, one note / {cmd.interval_s:.2f} s"
         if cmd.obstacle_db > -100:
             s += f"  | obstacle {cmd.obstacle_db:.0f} dB"
         return s
-    return {"lost": "Son : reperage perdu", "arrived": "Son : arrive"}.get(
-        cmd.mode, "Son : silence"
+    return {"lost": "Sound: tracking lost", "arrived": "Sound: arrived"}.get(
+        cmd.mode, "Sound: silence"
     )
 
 
@@ -117,7 +117,7 @@ def write_video(session_dir, out: Path, data: dict, cmds, wav: Path, height: int
     w.close()
     video = out / "camera_son.mp4"
     if not shutil.which("ffmpeg"):
-        log.warning("ffmpeg absent : vidéo muette, son séparé (%s)", wav)
+        log.warning("ffmpeg missing: silent video, separate sound (%s)", wav)
         silent.replace(video)
         return video
     subprocess.run(
@@ -138,12 +138,12 @@ def main(argv=None) -> dict:
     from visionaid.utils.config import load_config, resolve_path
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("session", help="dossier de session (data/sessions/<date>_<nom>)")
+    ap.add_argument("session", help="session folder (data/sessions/<date>_<name>)")
     ap.add_argument(
-        "--out", default=None, help="dossier de sortie (défaut : outputs/son/<session>)"
+        "--out", default=None, help="output folder (default: outputs/son/<session>)"
     )
-    ap.add_argument("--recompute", action="store_true", help="rejoue la vision même si en cache")
-    ap.add_argument("--video", action="store_true", help="écrit aussi camera_son.mp4")
+    ap.add_argument("--recompute", action="store_true", help="replays the vision even if cached")
+    ap.add_argument("--video", action="store_true", help="also writes camera_son.mp4")
     args = ap.parse_args(argv)
     name = Path(args.session).resolve().name
     out = resolve_path(args.out or f"outputs/son/{name}")
@@ -166,8 +166,8 @@ def main(argv=None) -> dict:
     }
     if args.video:
         res["video"] = write_video(args.session, out, data, cmds, wav)
-    print(f"Durée {data['duration']:.1f} s, consignes : {modes}")
-    print(f"Obstacle audible pendant ~{res['obstacle_s']:.1f} s")
+    print(f"Duration {data['duration']:.1f} s, instructions: {modes}")
+    print(f"Obstacle audible for ~{res['obstacle_s']:.1f} s")
     for k in ("guidage", "video"):
         if k in res:
             print(f"{k:8s} {res[k]}")

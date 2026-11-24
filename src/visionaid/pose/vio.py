@@ -1,16 +1,16 @@
-"""Pose fusionnée : odométrie visuelle RGB-D + gyroscope + gravité (+ recalage d'échelle).
+"""Fused pose: RGB-D visual odometry + gyroscope + gravity (+ scale re-anchoring).
 
-Composition autour de `RGBDOdometry` (phase 5), sans la modifier :
-- **a priori de rotation** : avant chaque image, la pose est prédite en tournant la précédente
-  de la rotation intégrée du gyroscope (translation inchangée). Elle sert de graine au PnP, et le
-  contrôle de saut de la VO se fait par rapport à elle ;
-- **contrôle de cohérence** : si la rotation VO s'écarte de plus de `max_disagree_deg` de celle
-  du gyroscope, la VO est jugée fausse et la prédiction est gardée ;
-- **repli** : VO perdue → orientation par le gyroscope seul, position gelée, qualité `degraded`,
-  puis `lost` après `degraded_max_s` ;
-- **gravité** : le repère monde est aligné sur la gravité dès l'initialisation (z = haut) et
-  chaque pose porte `up` (haut en repère monde), utilisé par le suivi du sol ;
-- **échelle** : `correct_depth` recale la profondeur sur la hauteur de caméra déclarée.
+Composition around `RGBDOdometry` (phase 5), without modifying it:
+- **rotation prior**: before each image, the pose is predicted by rotating the previous one
+  by the integrated gyroscope rotation (translation unchanged). It is used as the PnP seed, and the
+  VO jump check is done relative to it;
+- **consistency check**: if the VO rotation differs by more than `max_disagree_deg` from that
+  of the gyroscope, the VO is judged wrong and the prediction is kept;
+- **fallback**: VO lost → orientation from the gyroscope alone, position frozen, quality `degraded`,
+  then `lost` after `degraded_max_s`;
+- **gravity**: the world frame is aligned on gravity from initialisation (z = up) and
+  each pose carries `up` (up in the world frame), used by floor tracking;
+- **scale**: `correct_depth` re-anchors the depth on the declared camera height.
 """
 
 from __future__ import annotations
@@ -28,14 +28,14 @@ from visionaid.pose.vo import Observation, RGBDOdometry
 
 
 class VisualInertialOdometry:
-    """PoseSource VO + IMU. `add_imu(lot)` puis `update(frame, profondeur)` (ou `step(obs, …)`)."""
+    """VO + IMU PoseSource. `add_imu(batch)` then `update(frame, depth)` (or `step(obs, …)`)."""
 
     def __init__(self, cfg, calib: ImuCalib | None = None) -> None:
         v = cfg.vio
         self.vo = RGBDOdometry(cfg.vo)
         self.calib = calib if calib is not None else load_imu_calib(cfg)
-        # tolérance d'avance de l'image sur le dernier gyroscope reçu : les lots IMU arrivent
-        # toutes les 50 ms, une image peut donc précéder son lot (rotation prolongée ≤ 100 ms)
+        # tolerance for the image being ahead of the last gyroscope received: IMU batches arrive
+        # every 50 ms, so an image may precede its batch (rotation extended ≤ 100 ms)
         self.imu = ImuBuffer(
             self.calib, extrapolate_s=float(getattr(v, "imu_extrapolate_s", 0.05) or 0.05)
         )
@@ -64,7 +64,7 @@ class VisualInertialOdometry:
         self.n_vo_lost = 0
         self.n_no_imu = 0
 
-    # ------------------------------------------------------------------ entrées
+    # ------------------------------------------------------------------ inputs
     def add_imu(self, batch: ImuBatch | None) -> None:
         self.imu.add(batch)
 
@@ -73,7 +73,7 @@ class VisualInertialOdometry:
         return len(self.imu) > 0
 
     def correct_depth(self, frame: Frame, depth: Depth) -> Depth:
-        """Profondeur recalée en échelle (si gravité connue et recalage activé)."""
+        """Depth re-anchored in scale (if gravity is known and re-anchoring is enabled)."""
         if self.scaler is None or not self.grav.ready:
             return depth
         return self.scaler(depth, frame.K, self.grav.up)
@@ -92,7 +92,7 @@ class VisualInertialOdometry:
         if self.grav.init(acc) and self.vo.kf is None:
             T = np.eye(4)
             T[:3, :3] = gravity_aligned_rotation(self.grav.up)
-            self.vo.T_world_cam = T  # repère monde : z = haut dès la première keyframe
+            self.vo.T_world_cam = T  # world frame: z = up from the first keyframe
 
     def step(self, obs: Observation, K: np.ndarray, t: float = 0.0, frame_idx: int = 0) -> Pose:
         self.n_frames += 1
@@ -112,7 +112,7 @@ class VisualInertialOdometry:
             T_pred[:3, :3] = T_before[:3, :3] @ dR
             if vo.kf is not None:
                 vo.T_world_cam = T_pred.copy()
-                if self.gyro_seed:  # graine du PnP : T_cur_kf prédite
+                if self.gyro_seed:  # PnP seed: predicted T_cur_kf
                     vo.T_kf_cur_prev = np.linalg.inv(T_pred) @ vo.kf.T_world_kf
         p = vo.step(obs, K, t, frame_idx)
         quality = p.quality
@@ -172,7 +172,7 @@ class VisualInertialOdometry:
             "imu_calib": self.calib.source,
         }
 
-    # interface Block du bus
+    # Block interface of the bus
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None:
         self.add_imu(inputs.get("imu"))
         f, d = inputs.get("frame"), inputs.get("depth")

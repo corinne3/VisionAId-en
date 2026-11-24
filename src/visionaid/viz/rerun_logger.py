@@ -1,4 +1,4 @@
-"""Journalisation Rerun de tous les flux (timeline = temps vidéo) vers un fichier .rrd."""
+"""Rerun logging of all streams (timeline = video time) to a .rrd file."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from visionaid.mapping.geometry import backproject, transform
 
 
 class RerunLogger:
-    """Enregistre images, profondeur, nuage de points, trajectoire, costmap, chemin et cible."""
+    """Records images, depth, point cloud, trajectory, costmap, path and target."""
 
     def __init__(
         self,

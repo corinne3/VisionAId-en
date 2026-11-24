@@ -1,1 +1,1 @@
-"""Acquisition depuis le téléphone : serveur HTTPS/WebSocket, page web, sessions, faux téléphone."""
+"""Acquisition from the phone: HTTPS/WebSocket server, web page, sessions, fake phone."""

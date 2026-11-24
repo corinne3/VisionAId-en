@@ -1,4 +1,4 @@
-"""Phase 26 (D) : outil de diagnostic du chemin (indicateurs et image avant/après)."""
+"""Phase 26 (D): path diagnostic tool (indicators and before/after image)."""
 
 from __future__ import annotations
 

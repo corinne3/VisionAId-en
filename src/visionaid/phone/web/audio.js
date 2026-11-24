@@ -1,12 +1,12 @@
-// VisionAId — rendu sonore du guidage sur le téléphone (Web Audio).
-// Le PC décide quoi jouer (messages « sound », voir docs/protocol.md) ; ce fichier ne fait que
-// l'exécuter, à l'identique du rendu hors ligne (visionaid/audio/renderer.py) :
-// - chemin : note répétée (son 2, ou son 4 en recherche), placée par un pan stéréo
-//   (StereoPannerNode, puissance constante : pan −1 = tout à gauche, rien à droite) ;
-// - obstacles : nappe du son 1 en boucle, superposée, volume selon la distance ;
-// - arrivée : son 3, une fois ;
-// - phrases (messages « speech ») : synthèse vocale du navigateur (speechSynthesis) ; pendant une
-//   phrase « duck » (objet trouvé), la couche chemin est suspendue, les obstacles restent.
+// VisionAId — sound rendering of the guidance on the phone (Web Audio).
+// The computer decides what to play ("sound" messages, see docs/protocol.md); this file only
+// executes it, identically to the offline rendering (visionaid/audio/renderer.py):
+// - path: repeated note (sound 2, or sound 4 while searching), placed by a stereo pan
+//   (StereoPannerNode, constant power: pan −1 = fully left, nothing on the right);
+// - obstacles: looping pad of sound 1, overlaid, volume according to distance;
+// - arrival: sound 3, once;
+// - sentences ("speech" messages): browser speech synthesis (speechSynthesis); during a
+//   "duck" sentence (object found), the path layer is suspended, obstacles stay.
 "use strict";
 
 class GuideAudio {
@@ -15,43 +15,43 @@ class GuideAudio {
     this.cfg = null;
     this.buffers = {};
     this.ready = false;
-    this.active = false; // guidage en cours (bouton Démarrer)
-    this.cmd = null; // dernière consigne reçue
-    this.lastMsg = 0; // performance.now() de la dernière consigne
+    this.active = false; // guidance running (Start button)
+    this.cmd = null; // last instruction received
+    this.lastMsg = 0; // performance.now() of the last instruction
     this.prevMode = "silent";
-    this.next = 0; // prochaine note du chemin (temps audio)
-    this.loop = null; // source en boucle de la nappe des obstacles
+    this.next = 0; // next path note (audio time)
+    this.loop = null; // looping source of the obstacle pad
     this.timer = null;
     this.userDb = 0;
     this.onStatus = () => {};
     this.voiceLang = "fr-FR";
     this.voiceRate = 1;
-    this.duckUntil = 0; // performance.now() : couche chemin suspendue jusqu'à cet instant
-    this.speaking = 0; // phrases « duck » en cours
-    try { this.userDb = +(localStorage.getItem("visionaid.volume_db") || 0); } catch (e) { /* stockage indisponible */ }
+    this.duckUntil = 0; // performance.now(): path layer suspended until this instant
+    this.speaking = 0; // "duck" sentences in progress
+    try { this.userDb = +(localStorage.getItem("visionaid.volume_db") || 0); } catch (e) { /* storage unavailable */ }
   }
 
-  // À appeler DANS le geste de l'utilisateur (bouton) : iOS n'autorise le son qu'ainsi.
+  // To be called INSIDE the user gesture (button): iOS only allows sound this way.
   unlock() {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) { this.onStatus("Son indisponible dans ce navigateur", "err"); return; }
+      if (!AC) { this.onStatus("Sound unavailable in this browser", "err"); return; }
       this.ctx = new AC();
-      // iOS ≥ 16.4 : joue même quand le bouton silencieux est activé
+      // iOS ≥ 16.4: plays even when the silent switch is on
       try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) { /* ancien iOS */ }
       const c = this.ctx;
       this.master = c.createGain();
       this.master.connect(c.destination);
-      // couche chemin : notes → pan stéréo → sortie
+      // path layer: notes → stereo pan → output
       this.pan = c.createStereoPanner();
       this.pan.connect(this.master);
-      // couche obstacles : nappe en boucle → gain variable → sortie
+      // obstacle layer: looping pad → variable gain → output
       this.obGain = c.createGain();
       this.obGain.gain.value = 0;
       this.obGain.connect(this.master);
     }
     this.ctx.resume();
-    // iOS : la synthèse vocale aussi se déverrouille dans un geste de l'utilisateur
+    // iOS: speech synthesis is also unlocked inside a user gesture
     try {
       if (!this.speechUnlocked && window.speechSynthesis) {
         const u = new SpeechSynthesisUtterance(" ");
@@ -59,15 +59,15 @@ class GuideAudio {
         window.speechSynthesis.speak(u);
         this.speechUnlocked = true;
       }
-    } catch (e) { /* pas de synthèse vocale */ }
-    // tampon silencieux : finit de déverrouiller la sortie audio sur iOS
+    } catch (e) { /* no speech synthesis */ }
+    // silent buffer: finishes unlocking the audio output on iOS
     const b = this.ctx.createBuffer(1, 1, this.ctx.sampleRate), s = this.ctx.createBufferSource();
     s.buffer = b; s.connect(this.ctx.destination); s.start();
   }
 
-  // Réglages du PC (message « welcome ») : charge les sons.
+  // Settings from the computer ("welcome" message): loads the sounds.
   async configure(a) {
-    if (!a) { this.onStatus("Le PC n'a pas envoyé de sons", "warn"); return; }
+    if (!a) { this.onStatus("The computer did not send any sounds", "warn"); return; }
     if (!this.ctx) return;
     this.cfg = a;
     this._applyVolume();
@@ -82,10 +82,10 @@ class GuideAudio {
         this.buffers[k] = buf;
       }));
       this.ready = true;
-      this.onStatus("Son prêt", "ok");
+      this.onStatus("Sound ready", "ok");
       if (!this.timer) this.timer = setInterval(() => this._tick(), 25);
     } catch (e) {
-      this.onStatus("Sons introuvables : " + (e.message || e), "err");
+      this.onStatus("Sounds not found: " + (e.message || e), "err");
     }
   }
 
@@ -97,10 +97,10 @@ class GuideAudio {
   stop() {
     this.active = false; this.cmd = null; this.prevMode = "silent";
     if (this.obGain) this._setObstacle(-120, 0.05);
-    if (this.loop) { try { this.loop.stop(this.ctx.currentTime + 0.3); } catch (e) { /* déjà arrêtée */ } this.loop = null; }
+    if (this.loop) { try { this.loop.stop(this.ctx.currentTime + 0.3); } catch (e) { /* already stopped */ } this.loop = null; }
   }
 
-  // Consigne du PC (~20 par seconde).
+  // Instruction from the computer (~20 per second).
   onSound(m) {
     this.cmd = m;
     this.lastMsg = performance.now();
@@ -112,7 +112,7 @@ class GuideAudio {
 
   resume() { if (this.ctx) this.ctx.resume(); }
 
-  // Phrase dite dans le casque. `duck` : chemin suspendu jusqu'à la fin de la phrase.
+  // Sentence spoken in the headset. `duck`: path suspended until the end of the sentence.
   speak(text, duck) {
     const ss = window.speechSynthesis;
     if (!ss || !text) return;
@@ -126,7 +126,7 @@ class GuideAudio {
     if (v) u.voice = v;
     if (duck) {
       this.speaking += 1;
-      // garde-fou : jamais plus que la durée probable de la phrase (≈ 14 caractères/s) + 3 s
+      // safeguard: never more than the probable duration of the sentence (≈ 14 characters/s) + 3 s
       this.duckUntil = Math.max(this.duckUntil, performance.now() + (text.length / 14) * 1000 / u.rate + 3000);
       const end = () => {
         this.speaking = Math.max(0, this.speaking - 1);
@@ -135,7 +135,7 @@ class GuideAudio {
       u.onend = end; u.onerror = end;
     }
     this.resume();
-    ss.speak(u); // à la suite des phrases déjà en cours
+    ss.speak(u); // after the sentences already in progress
   }
 
   cancelSpeech() {
@@ -143,7 +143,7 @@ class GuideAudio {
     this.speaking = 0; this.duckUntil = 0;
   }
 
-  // Bip court : « parle maintenant ».
+  // Short beep: "speak now".
   beep() {
     if (!this.ctx) return;
     const c = this.ctx, o = c.createOscillator(), g = c.createGain(), t = c.currentTime + 0.01;
@@ -158,11 +158,11 @@ class GuideAudio {
 
   setVolume(db) {
     this.userDb = db;
-    try { localStorage.setItem("visionaid.volume_db", String(db)); } catch (e) { /* stockage indisponible */ }
+    try { localStorage.setItem("visionaid.volume_db", String(db)); } catch (e) { /* storage unavailable */ }
     this._applyVolume();
   }
 
-  // Vérification du casque : gauche, droite, devant.
+  // Headset check: left, right, front.
   test() {
     if (!this.ready) return false;
     const t = this.ctx.currentTime + 0.05;
@@ -173,14 +173,14 @@ class GuideAudio {
     return true;
   }
 
-  // ---------------------------------------------------------------- interne
+  // ---------------------------------------------------------------- internal
   _applyVolume() {
     if (!this.master) return;
     const db = (this.cfg ? this.cfg.master_gain_db : 0) + this.userDb;
     this.master.gain.setTargetAtTime(Math.pow(10, db / 20), this.ctx.currentTime, 0.05);
   }
 
-  // `at` : false = transition lissée maintenant, nombre = saut à cet instant audio
+  // `at`: false = smoothed transition now, number = jump at this audio instant
   _setPan(p, at) {
     const c = this.ctx, tau = this.cfg ? this.cfg.smoothing_s : 0.05;
     const v = Math.max(-1, Math.min(1, p));
@@ -198,7 +198,7 @@ class GuideAudio {
     if (!this.ready || this.loop || !this.buffers.obstacle) return;
     const c = this.ctx, src = c.createBufferSource(), env = c.createGain();
     src.buffer = this.buffers.obstacle;
-    src.loop = true; // fichier préparé bouclable sans couture
+    src.loop = true; // prepared file, seamlessly loopable
     env.gain.value = Math.pow(10, (this.cfg.gains_db.obstacle || 0) / 20);
     src.connect(env); env.connect(this.obGain);
     src.start(c.currentTime + 0.02);
@@ -219,17 +219,17 @@ class GuideAudio {
 
   _tick() {
     if (!this.ready || !this.active) return;
-    if (!this.loop) this._startLoop(); // sons chargés après Démarrer
+    if (!this.loop) this._startLoop(); // sounds loaded after Start
     const now = this.ctx.currentTime;
     let mode = this.cmd ? this.cmd.mode : "silent";
-    // plus de consigne du PC (Wi-Fi coupé, PC arrêté) : « arrête-toi » plutôt qu'un guide figé
+    // no more instructions from the computer (Wi-Fi cut, computer stopped): "stop" rather than a frozen guide
     if (this.lastMsg > 0 && performance.now() - this.lastMsg > this.cfg.watchdog_s * 1000) {
       mode = "lost";
       if (this.prevMode !== "lost") this._setObstacle(this.cfg.lost_obstacle_db);
     }
     const ducked = performance.now() < this.duckUntil;
     if ((mode === "guide" || mode === "search") && !ducked) {
-      // nouveau rythme dès le passage recherche ↔ chemin
+      // new rhythm as soon as search ↔ path switches
       if (mode !== this.prevMode || this.next < now) this.next = now + 0.02;
       const key = mode === "search" && this.buffers.search ? "search" : "guide";
       while (this.next < now + 0.1) {
@@ -237,7 +237,7 @@ class GuideAudio {
         this.next += Math.max(0.2, this.cmd.interval || 1);
       }
     }
-    this.prevMode = ducked ? "silent" : mode; // fin de phrase : le rythme repart aussitôt
+    this.prevMode = ducked ? "silent" : mode; // end of sentence: the rhythm restarts immediately
   }
 }
 

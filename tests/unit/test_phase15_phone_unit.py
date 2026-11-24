@@ -1,4 +1,4 @@
-"""Phase 15 (unitaire) : certificats, protocole, horloge, tampon d'entrée."""
+"""Phase 15 (unit): certificates, protocol, clock, input buffer."""
 
 import ssl
 import threading
@@ -34,7 +34,7 @@ def test_certs_cover_names_and_chain(tmp_path):
     ca_bytes = paths.ca_cert.read_bytes()
     ca = x509.load_pem_x509_certificate(ca_bytes)
     cert.verify_directly_issued_by(ca)
-    # idempotent tant que l'hôte est couvert ; réémis si l'IP change, avec la même autorité
+    # idempotent as long as the host is covered; re-issued if the IP changes, with the same authority
     before = paths.server_cert.read_bytes()
     ensure_certs(tmp_path, ["localhost", "monpc.local"], ["127.0.0.1", "192.168.1.20"])
     assert paths.server_cert.read_bytes() == before
@@ -71,7 +71,7 @@ def test_tls_client_trusting_local_ca_connects(tmp_path):
     th.join(5)
     lsock.close()
     assert got["data"] == b"hello"
-    # un client sans l'autorité locale refuse le certificat
+    # a client without the local authority refuses the certificate
     lsock2 = socket.socket()
     lsock2.bind(("127.0.0.1", 0))
     lsock2.listen(1)
@@ -119,7 +119,7 @@ def test_hello_version_check():
         check_hello({"type": "hello", "protocol": 99})
     with pytest.raises(ProtocolError):
         check_hello({"type": "imu"})
-    with pytest.raises(ProtocolError, match="unité"):
+    with pytest.raises(ProtocolError, match="unit"):
         check_hello({"type": "hello", "protocol": 1, "gyro_units": "tours/min"})
 
 
@@ -127,12 +127,12 @@ def test_imu_json_conversion_and_filtering():
     rows = [
         [2.0, 90.0, 0.0, -180.0, 0.0, 9.81, 0.0],
         [1.0, 0.0, 0.0, 0.0, 0.0, 9.81, 0.0],
-        [3.0, None, 0, 0, 0, 0, 0],  # capteur absent : ignoré
-        [4.0, 1.0],  # incomplet : ignoré
+        [3.0, None, 0, 0, 0, 0, 0],  # sensor missing: ignored
+        [4.0, 1.0],  # incomplete: ignored
     ]
     b = imu_batch_from_json(rows, "deg/s", 5.0)
     assert len(b) == 2 and b.t_recv == 5.0
-    np.testing.assert_allclose(b.t, [1.0, 2.0])  # trié
+    np.testing.assert_allclose(b.t, [1.0, 2.0])  # sorted
     np.testing.assert_allclose(b.gyro[1], [np.pi / 2, 0.0, -np.pi])
     assert len(imu_batch_from_json([], "deg/s")) == 0
 
@@ -148,16 +148,16 @@ def test_clock_estimator_recovers_offset():
         down = 0.004 + rng.exponential(0.01)
         est.ping(k, t_phone, t_phone + true_offset + up)
         if prev is not None:
-            est.rtt(*prev)  # le RTT d'un échange arrive avec le ping suivant
+            est.rtt(*prev)  # the RTT of an exchange arrives with the next ping
         prev = (k, up + down)
     c = est.estimate()
     assert abs(c.offset - true_offset) <= c.uncertainty + 1e-9
     assert c.uncertainty < 0.02
-    # RTT d'un ping inconnu ou invalide : ignoré
+    # RTT of an unknown or invalid ping: ignored
     est.rtt(999, 0.001)
     est.rtt(3, float("nan"))
     assert est.estimate().rtt == pytest.approx(c.rtt)
-    # sans RTT : biais = délai aller minimal, incertitude par défaut
+    # without RTT: bias = minimal outbound delay, default uncertainty
     e2 = ClockEstimator()
     e2.ping(1, 10.0, 10.0 + true_offset + 0.01)
     c2 = e2.estimate()
@@ -203,17 +203,17 @@ def test_inbox_slow_consumer_gets_fresh_frames():
         f, _, _ = box.get(0.2)
         if f is not None:
             ages.append(time.time() - f.t_recv)
-        time.sleep(0.15)  # consommateur lent (~6 Hz)
+        time.sleep(0.15)  # slow consumer (~6 Hz)
     stop.set()
     th.join(1)
     assert len(ages) >= 5
-    # l'image consommée a au plus une période de retard : rien ne s'accumule
+    # the consumed image is at most one period late: nothing piles up
     assert max(ages) < 2 * period
     assert box.n_overwritten > 10
 
 
 def test_cert_reload_on_network_change(tmp_path):
-    """Changement d'IP : certificat réémis et rechargeable dans le contexte TLS existant."""
+    """IP change: certificate re-issued and reloadable in the existing TLS context."""
     from visionaid.phone.certs import server_ssl_context
 
     paths = ensure_certs(tmp_path, ["localhost"], ["127.0.0.1", "172.20.10.5"])
@@ -225,7 +225,7 @@ def test_cert_reload_on_network_change(tmp_path):
 
 
 def test_ipv6_only_network_addresses(monkeypatch):
-    """Partage de connexion IPv6 seul : 192.0.0.2 (traduction) exclue, IPv6 proposée entre crochets."""
+    """IPv6-only hotspot: 192.0.0.2 (translation) excluded, IPv6 offered in brackets."""
     from visionaid.phone import certs
 
     monkeypatch.setattr(

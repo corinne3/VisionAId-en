@@ -18,7 +18,7 @@ On Windows, see also [setup/windows-android](../../setup/windows-android/README.
 ```bash
 uv run python -m visionaid.apps.run_live --target "où est ma gourde" --height 150 --rerun live
 ```
-Then, on the phone browser: `https://<computer-name>.local:8443/` (or the IP address printed by the command). Headphones connected to the phone, phone on the chest, then **Démarrer** (Start). The guidance sound plays in the headphones; **Tester le son** (Test the sound) checks left, right and front. Turn off "Mono audio" in the phone's accessibility settings.
+Then, on the phone browser: `https://<computer-name>.local:8443/` (or the IP address printed by the command). Headphones connected to the phone, phone on the chest, then **Start**. The guidance sound plays in the headphones; **Test the sound** checks left, right and front. Turn off "Mono audio" in the phone's accessibility settings.
 
 For the keys: `--target "où sont mes clés"`.
 
@@ -50,7 +50,7 @@ uv run python -m visionaid.apps.run_phone --record keys_test2 --target "où sont
 ```bash
 uv run python -m visionaid.apps.run_live --command stt --height 150 --rerun live
 ```
-Without `--target`, voice mode is chosen automatically. On the phone, after **Démarrer**, the page invites you to press the big **🎤 Parler** (Speak) button (beep), then say "je cherche ma gourde" or "où sont mes clés": recording stops by itself after the sentence (or press again). The PC transcribes (Whisper, ~0.6 s on a Mac), then:
+Without `--target`, voice mode is chosen automatically. On the phone, after **Start**, the page invites you (in French) to press the big **🎤 Talk / Parler** button (beep), then say "je cherche ma gourde" or "où sont mes clés": recording stops by itself after the sentence (or press again). The PC transcribes (Whisper, ~0.6 s on a Mac), then:
 1. "Je cherche la gourde. Tourne lentement sur toi-même." ("I'm looking for the bottle. Turn slowly on the spot."), then the search sound;
 2. object found: the path sound pauses for one sentence saying where the object is and how to get there ("The bottle is at the back of the room, in front of you, about 4 metres away, behind the sofa, on the table. The path goes around the sofa on the left, follow the sound.");
 3. guidance with the path sound only;
@@ -199,4 +199,4 @@ make night                                  # everything, log in outputs/night_r
 | Empty Rerun window | wait ~25 s (models loading); check it was not closed |
 | "Connection not private" on the phone | install the certificate and trust it: `docs/phone_setup.md`, step 3 |
 | The phone cannot reach the computer | same network (or the phone's hotspot); public Wi-Fi often isolates devices |
-| More details | `docs/phone_setup.md` (connection), `REPORT_PHASE2.md` (report), `DECISIONS.md` (design decisions), in French |
+| More details | [`phone_setup.md`](phone_setup.md) (connection), [`REPORT_PHASE2.md`](REPORT_PHASE2.md) (report), [`DECISIONS.md`](DECISIONS.md) (design decisions) |

@@ -1,4 +1,4 @@
-"""Planificateur de haut niveau : costmap + position utilisateur + objet → Path."""
+"""High-level planner: costmap + user position + object → Path."""
 
 from __future__ import annotations
 
@@ -30,9 +30,9 @@ def nearest_passable(
     prefer: np.ndarray | None = None,
     toward: tuple[int, int] | None = None,
 ) -> tuple[int, int] | None:
-    """Cellule franchissable la plus proche de ij (dans un rayon), en préférant `prefer` (ex. libre).
+    """Traversable cell closest to ij (within a radius), preferring `prefer` (e.g. free).
 
-    À distance égale (à une cellule près), on départage par la proximité de `toward` (l'utilisateur).
+    At equal distance (within one cell), ties are broken by proximity to `toward` (the user).
     """
     h, w = cc.shape
     i0, j0 = ij
@@ -60,14 +60,14 @@ def nearest_passable(
 
 
 class Planner:
-    """Choisit le but (cellule libre la plus proche de l'objet), planifie (A* ou D* Lite), lisse."""
+    """Chooses the goal (free cell closest to the object), plans (A* or D* Lite), smooths."""
 
     def __init__(self, cfg) -> None:
         p = cfg.planning
         self.algorithm = str(p.algorithm)
         self.unknown_cost = float(p.unknown_cost)
         self.allow_unknown = bool(p.allow_unknown)
-        # pas de chemin connu jusqu'à l'objet : chemin jusqu'à la limite de la zone connue
+        # no known path to the object: path up to the edge of the known area
         self.frontier_fallback = bool(getattr(p, "frontier_fallback", True))
         self.n_frontier = 0
         self.lookahead_m = float(p.lookahead_m)
@@ -77,15 +77,15 @@ class Planner:
         self._dkey = None
         self.n_plans = 0
         self.n_fail = 0
-        # stabilité (phase 25) : engagement sur le chemin précédent, visée vers l'objet au but
+        # stability (phase 25): commitment to the previous path, aiming at the object at the goal
         self.commit_ratio = float(getattr(p, "commit_ratio", 0.0) or 0.0)
         self.commit_margin = float(getattr(p, "commit_margin_m", 0.0) or 0.0)
         self.near_goal = float(getattr(p, "near_goal_m", 0.0) or 0.0)
         self.prev_pts: np.ndarray | None = None
         self.prev_goal: np.ndarray | None = None
         self.n_kept = 0
-        # approche de l'objet (phase 27) : but « à portée de main » le plus rapide à atteindre,
-        # marge réduite près de l'objet (passer entre deux chaises pour attraper la gourde)
+        # approaching the object (phase 27): "within arm's reach" goal that is quickest to reach,
+        # reduced margin near the object (going between two chairs to grab the bottle)
         self.reach = float(getattr(p, "reach_m", 0.0) or 0.0)
         self.zone = float(getattr(p, "approach_zone_m", 0.0) or 0.0)
         self.zone_clear = float(getattr(p, "approach_clearance_m", 0.0) or 0.0)
@@ -97,12 +97,12 @@ class Planner:
         self.n_relaxed = 0
 
     def plan(self, cm: Costmap, user_xy: np.ndarray, obj: ObjectEstimate) -> Path:
-        """Chemin vers l'objet par des zones **connues** (vues libres) uniquement.
+        """Path to the object through **known** areas (seen as free) only.
 
-        Sans `allow_unknown`, une zone jamais vue n'est jamais proposée, même plus courte. Si
-        aucun chemin connu n'atteint l'objet (carte encore partielle), le chemin s'arrête à la
-        limite de la zone connue, sur le meilleur trajet estimé (`frontier_fallback`) : on y
-        va, la carte s'étend, et le chemin complet apparaît.
+        Without `allow_unknown`, a never-seen area is never proposed, even if shorter. If
+        no known path reaches the object (map still partial), the path stops at the
+        edge of the known area, on the best estimated route (`frontier_fallback`): the user goes
+        there, the map grows, and the full path appears.
         """
         t, idx = cm.t, cm.frame_idx
         empty = Path(t, idx, np.zeros((0, 2)), np.full(2, np.nan), np.full(2, np.nan), False, 0.0)
@@ -146,24 +146,24 @@ class Planner:
         kept = self._keep_previous(cc, origin, res, user_xy[:2], goal_xy, polyline_length(pts))
         if kept is not None:
             pts = kept
-            goal_xy = kept[-1].copy()  # le but publié est la fin du chemin réellement suivi
+            goal_xy = kept[-1].copy()  # the published goal is the end of the path actually followed
             self.n_kept += 1
         self.prev_pts, self.prev_goal = pts.copy(), goal_xy.copy()
         length = polyline_length(pts)
         if not frontier and self.near_goal > 0 and length < self.near_goal:
-            # au but : la direction d'un point à quelques centimètres n'a plus de sens, on vise
-            # l'objet lui-même (stable), comme le fait le guidage en fin d'approche
+            # at the goal: the direction of a point a few centimetres away no longer makes sense, we aim
+            # at the object itself (stable), as guidance does at the end of the approach
             la = np.asarray(obj.position[:2], float).copy()
         else:
             la = self._lookahead_los(cm, pts, s_ij, start, origin, res)
         return Path(t, idx, pts, la, goal_xy, True, length)
 
     def _search(self, cm, cc, s_ij, o_ij, obj, allow_unknown: bool):
-        """But et cellules du chemin sur la grille de coûts `cc` ; (but, cellules, départ, cc)
-        ou None."""
+        """Goal and path cells on the cost grid `cc`; (goal, cells, start, cc)
+        or None."""
         res, origin = cm.resolution, cm.origin
         d_obj = None
-        strict = np.isfinite(cc)  # franchissable avec la marge normale
+        strict = np.isfinite(cc)  # traversable with the normal margin
         cc_strict = cc
         if self.zone > 0 and self.zone_clear > 0:
             cc, d_obj = self._relax_near_object(cm, cc, obj, res, origin, allow_unknown)
@@ -172,8 +172,8 @@ class Planner:
             return None
         start = s_ij
         if not np.isfinite(cc[start]):
-            # l'utilisateur est dans une zone gonflée (bruit, meuble proche) ou pas encore
-            # cartographiée : on part de la cellule franchissable la plus proche
+            # the user is in an inflated zone (noise, nearby furniture) or not yet
+            # mapped: start from the closest traversable cell
             start = nearest_passable(cc, s_ij, int(1.0 / res))
             if start is None:
                 return None
@@ -181,8 +181,8 @@ class Planner:
         if self.reach > 0:
             reach = self._reach_goal(cc, start, obj, res, origin, d_obj, strict)
             if reach is not None and cc is not cc_strict and np.isfinite(cc_strict[start]):
-                # la marge réduite ne sert que si elle évite un vrai détour : sinon on garde le
-                # chemin avec la marge normale (contournement d'un obstacle surgissant, etc.)
+                # the reduced margin is only used if it avoids a real detour: otherwise we keep the
+                # path with the normal margin (going around a sudden obstacle, etc.)
                 normal = self._reach_goal(cc_strict, start, obj, res, origin, d_obj, strict)
                 if normal is not None:
                     ln = len(normal[1]) * res
@@ -211,10 +211,10 @@ class Planner:
         return goal, cells, start, cc
 
     def _cut_at_unknown(self, state, cells):
-        """Coupe le chemin à la première cellule inconnue (après les cellules de départ) ; None
-        s'il ne reste rien d'utile (< 2 cellules connues)."""
+        """Cuts the path at the first unknown cell (after the starting cells); None
+        if nothing useful remains (< 2 known cells)."""
         k = 0
-        while k < len(cells) and state[cells[k]] == UNKNOWN:  # départ pas encore cartographié
+        while k < len(cells) and state[cells[k]] == UNKNOWN:  # start not mapped yet
             k += 1
         e = k
         while e < len(cells) and state[cells[e]] != UNKNOWN:
@@ -223,9 +223,9 @@ class Planner:
         return out if e - k >= 2 else None
 
     def _relax_near_object(self, cm, cc, obj, res, origin, allow_unknown: bool = True):
-        """Près de l'objet (≤ `approach_zone_m`), la marge passe de `robot_radius_m` à
-        `approach_clearance_m` (demi-largeur du corps). Ces cellules restent plus coûteuses
-        (`approach_penalty`) : on ne s'y engage que si cela raccourcit vraiment le trajet."""
+        """Near the object (≤ `approach_zone_m`), the margin goes from `robot_radius_m` to
+        `approach_clearance_m` (half body width). These cells stay more expensive
+        (`approach_penalty`): they are only used if this really shortens the route."""
         h, w = cc.shape
         jj, ii = np.meshgrid(np.arange(w), np.arange(h))
         xs = origin[0] + (jj + 0.5) * res
@@ -235,7 +235,7 @@ class Planner:
         relax = (
             ~np.isfinite(cc) & (cm.state != OCC) & (clear >= self.zone_clear) & (d_obj <= self.zone)
         )
-        if not allow_unknown:  # la marge réduite ne rend jamais franchissable une zone inconnue
+        if not allow_unknown:  # the reduced margin never makes an unknown area traversable
             relax &= cm.state != UNKNOWN
         if relax.any():
             cc = cc.copy()
@@ -243,11 +243,11 @@ class Planner:
         return cc, d_obj
 
     def _reach_goal(self, cc, start, obj, res, origin, d_obj, strict=None):
-        """But « à portée de main » : parmi les cellules franchissables à moins de `reach_m` de
-        l'objet (on attrape une gourde posée sur une table depuis le bord, pas besoin d'en faire
-        le tour), celle dont le trajet depuis l'utilisateur est le moins coûteux. Hystérésis :
-        le but précédent est conservé s'il reste à moins de +15 % du meilleur.
-        Renvoie (but, chemin) ou None (repli sur le but « cellule la plus proche »)."""
+        """Goal "within arm's reach": among the traversable cells less than `reach_m` from
+        the object (you grab a bottle on a table from the edge, no need to go
+        around it), the one with the cheapest route from the user. Hysteresis:
+        the previous goal is kept if it stays within +15% of the best one.
+        Returns (goal, path) or None (fallback to the "closest cell" goal)."""
         from visionaid.planning.astar import _astar_kernel
 
         h, w = cc.shape
@@ -262,16 +262,16 @@ class Planner:
             return None
         flat = np.ascontiguousarray(cc, np.float64).ravel()
         s = start[0] * w + start[1]
-        g, parent = _astar_kernel(flat, h, w, s, -1, False)  # coûts depuis l'utilisateur
+        g, parent = _astar_kernel(flat, h, w, s, -1, False)  # costs from the user
         g = g.reshape(h, w)
-        # le but garde la marge normale s'il existe une telle cellule atteignable à portée de
-        # main ; il n'entre dans la bande à marge réduite qu'à défaut (objet au milieu d'une
-        # table). Sans cette préférence, l'agent du simulateur finissait collé au meuble.
+        # the goal keeps the normal margin if such a reachable cell exists within arm's
+        # reach; it only enters the reduced-margin band otherwise (object in the middle of a
+        # table). Without this preference, the simulator agent ended up stuck to the furniture.
         if strict is not None:
             pref = cand & strict & np.isfinite(g)
             if pref.any():
                 cand = pref
-        score = np.where(cand, g + 3.0 * d_obj / res, np.inf)  # à coût égal, près de l'objet
+        score = np.where(cand, g + 3.0 * d_obj / res, np.inf)  # at equal cost, near the object
         k = int(np.argmin(score))
         if not np.isfinite(score.flat[k]):
             return None
@@ -290,20 +290,20 @@ class Planner:
         return goal, cells
 
     def _keep_previous(self, cc, origin, res, user_xy, goal_xy, new_len) -> np.ndarray | None:
-        """Chemin précédent, raccourci depuis l'utilisateur, s'il reste praticable et pas
-        nettement plus long que le nouveau (évite l'alternance entre deux contournements
-        presque équivalents sur une carte bruitée). None sinon."""
-        self.keep_why = "pas de chemin précédent"
+        """Previous path, shortened from the user, if it stays practicable and not
+        clearly longer than the new one (avoids alternating between two almost equivalent
+        detours on a noisy map). None otherwise."""
+        self.keep_why = "no previous path"
         if self.commit_ratio <= 0 or self.prev_pts is None or len(self.prev_pts) < 2:
             return None
-        self.keep_why = "but déplacé"
+        self.keep_why = "goal moved"
         if np.linalg.norm(goal_xy - self.prev_goal) > 0.15:
-            # but déplacé (même de peu) : nouveau chemin. Sinon le chemin gardé finirait à
-            # l'ancien but pendant que le guidage compare la position au nouveau (agent bloqué
-            # en approche dans le simulateur, couloir : 94 % → 67 % de succès)
+            # goal moved (even slightly): new path. Otherwise the kept path would end at
+            # the old goal while guidance compares the position with the new one (agent stuck
+            # on approach in the simulator, corridor: 94% → 67% success)
             return None
         prev = self.prev_pts
-        # point du chemin précédent le plus proche de l'utilisateur (projection sur les segments)
+        # point of the previous path closest to the user (projection onto the segments)
         best, best_k, best_p = np.inf, 0, prev[0]
         for k in range(len(prev) - 1):
             a, b = prev[k], prev[k + 1]
@@ -313,38 +313,38 @@ class Planner:
             d = float(np.linalg.norm(user_xy - p))
             if d < best:
                 best, best_k, best_p = d, k, p
-        self.keep_why = "écarté du chemin"
+        self.keep_why = "off the path"
         if best > 0.5:
-            return None  # l'utilisateur s'est écarté du chemin précédent
+            return None  # the user has moved away from the previous path
         rest = np.vstack([user_xy[None], best_p[None], prev[best_k + 1 :]])
         rest = rest[np.r_[True, np.linalg.norm(np.diff(rest, axis=0), axis=1) > 1e-6]]
         h, w = cc.shape
-        self.keep_why = "bloqué"
-        for a, b in zip(rest[:-1], rest[1:], strict=True):  # praticable sur la nouvelle carte
+        self.keep_why = "blocked"
+        for a, b in zip(rest[:-1], rest[1:], strict=True):  # practicable on the new map
             n = max(int(np.linalg.norm(b - a) / (0.5 * res)), 1)
             for s_ in np.linspace(0.0, 1.0, n + 1):
                 i, j = cell_of(a + s_ * (b - a), origin, res)
                 if not (0 <= i < h and 0 <= j < w) or not np.isfinite(cc[i, j]):
                     return None
-        self.keep_why = "trop long"
+        self.keep_why = "too long"
         if polyline_length(rest) > new_len * (1.0 + self.commit_ratio) + self.commit_margin:
             return None
-        self.keep_why = "gardé"
+        self.keep_why = "kept"
         return rest
 
     def _lookahead_los(self, cm: Costmap, pts, user_ij, start, origin, res) -> np.ndarray:
-        """Point d'anticipation le plus loin (≤ lookahead_m) en ligne de vue de l'utilisateur.
+        """Farthest look-ahead point (≤ lookahead_m) in the user's line of sight.
 
-        La ligne de vue est testée depuis la position réelle sur une grille où seules les cellules
-        à moins de `body_clearance_m` d'un obstacle sont bloquantes : la direction donnée ne mène
-        jamais droit sur un obstacle, même quand l'utilisateur a dérivé hors du chemin. Sans
-        cette contrainte, la corde vers un point situé après un virage coupe le coin.
+        Line of sight is tested from the real position on a grid where only the cells
+        less than `body_clearance_m` from an obstacle are blocking: the given direction never leads
+        straight onto an obstacle, even when the user has drifted off the path. Without
+        this constraint, the chord towards a point located after a turn cuts the corner.
         """
         from visionaid.planning.lookahead import line_of_sight
 
         clear = distance_to_obstacles(cm.state, res)
         body = np.where(clear >= self.body_clearance, 0.0, np.inf)
-        if not self.allow_unknown:  # la visée ne coupe pas non plus par une zone jamais vue
+        if not self.allow_unknown:  # the aim does not cut through a never-seen area either
             body[cm.state == UNKNOWN] = np.inf
         h, w = body.shape
         src = user_ij if np.isfinite(body[user_ij]) else start
@@ -355,10 +355,10 @@ class Planner:
             if 0 <= ij[0] < h and 0 <= ij[1] < w and line_of_sight(body, src, ij):
                 return p
             d -= 0.1
-        # aucune visée sûre : on rejoint d'abord la cellule dégagée du départ
+        # no safe aim: first go back to the clear starting cell
         return world_of(start, origin, res) if start != user_ij else lookahead_point(pts, 0.3)
 
-    # interface Block du bus
+    # Block interface of the bus
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None:
         cm, obj, pose = inputs.get("costmap"), inputs.get("object"), inputs.get("pose_world")
         if cm is None or obj is None or pose is None:

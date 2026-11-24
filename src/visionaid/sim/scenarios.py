@@ -1,4 +1,4 @@
-"""Générateurs de scénarios : pièce meublée, couloir avec porte, obstacle surgissant, carte réelle."""
+"""Scenario generators: furnished room, corridor with a door, sudden obstacle, real map."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import numpy as np
 from visionaid.sim.world import SimWorld
 
 RES = 0.05
-CLEAR_START = 0.45  # dégagement minimal au départ
+CLEAR_START = 0.45  # minimal clearance at the start
 
 
 def _empty(w_m: float, h_m: float, margin: float = 0.5) -> SimWorld:
@@ -18,7 +18,7 @@ def _empty(w_m: float, h_m: float, margin: float = 0.5) -> SimWorld:
     H = int(round((h_m + 2 * margin) / RES))
     occ = np.zeros((H, W), bool)
     world = SimWorld(occ, np.array([-margin, -margin]), RES, np.zeros(3), np.zeros(3))
-    t = 0.1  # murs de 10 cm
+    t = 0.1  # 10 cm walls
     world.add_box(-margin, -margin, w_m + margin, -0.0)
     world.add_box(-margin, h_m, w_m + margin, h_m + margin)
     world.add_box(-margin, -margin, 0.0, h_m + margin)
@@ -28,7 +28,7 @@ def _empty(w_m: float, h_m: float, margin: float = 0.5) -> SimWorld:
 
 
 def _place_object_on(world: SimWorld, box, rng) -> None:
-    """Objet posé près du bord du meuble (atteignable à la main), à 0,8 m de haut."""
+    """Object placed near the edge of the furniture (reachable by hand), 0.8 m high."""
     x0, y0, x1, y1 = box
     side = rng.integers(4)
     inset = 0.08
@@ -60,7 +60,7 @@ def _free_start(world: SimWorld, rng, cond, tries: int = 2000) -> bool:
 
 
 def room(seed: int) -> SimWorld:
-    """Pièce rectangulaire avec meubles aléatoires ; objet sur un meuble, visible à ≤ 4 m du départ."""
+    """Rectangular room with random furniture; object on a piece of furniture, visible within 4 m of the start."""
     rng = np.random.default_rng(seed)
     for _attempt in range(50):
         w, h = rng.uniform(5.0, 7.0), rng.uniform(4.0, 6.0)
@@ -83,11 +83,11 @@ def room(seed: int) -> SimWorld:
         )
         if ok and _reachable(world):
             return world
-    raise RuntimeError("scénario pièce introuvable")
+    raise RuntimeError("room scenario not found")
 
 
 def corridor(seed: int) -> SimWorld:
-    """Deux pièces reliées par une porte (0,9 m) ; l'objet est dans l'autre pièce, déjà en mémoire."""
+    """Two rooms connected by a door (0.9 m); the object is in the other room, already in memory."""
     rng = np.random.default_rng(seed)
     for _attempt in range(50):
         w, h = rng.uniform(7.0, 9.0), rng.uniform(3.0, 4.5)
@@ -112,11 +112,11 @@ def corridor(seed: int) -> SimWorld:
         ok = _free_start(world, rng, lambda xy: xy[0] < xw - 0.8)
         if ok and _reachable(world):
             return world
-    raise RuntimeError("scénario couloir introuvable")
+    raise RuntimeError("corridor scenario not found")
 
 
 def appearing_obstacle(seed: int) -> SimWorld:
-    """Pièce + obstacle (0,6×0,6 m) qui apparaît sur le trajet après 4 s."""
+    """Room + obstacle (0.6×0.6 m) that appears on the route after 4 s."""
     world = room(seed + 10_000)
     world.name = "appearing"
     world.events.append((4.0, "box_ahead", 0.6))
@@ -124,7 +124,7 @@ def appearing_obstacle(seed: int) -> SimWorld:
 
 
 def real_map(seed: int, path: str | Path | None, body: float = 0.25) -> SimWorld | None:
-    """Carte réelle = costmap issue de la vidéo (cellules occupées), départ et objet issus du run."""
+    """Real map = costmap from the video (occupied cells), start and object from the run."""
     if path is None or not Path(path).exists():
         return None
     d = np.load(path)
@@ -136,7 +136,7 @@ def real_map(seed: int, path: str | Path | None, body: float = 0.25) -> SimWorld
     world.known_object = True
     rng = np.random.default_rng(seed)
     start = d["start"].astype(float)
-    # départ : cellule dégagée la plus proche du début de la trajectoire, cap aléatoire
+    # start: clear cell closest to the beginning of the trajectory, random heading
     dist = world.dist
     ii, jj = np.nonzero(dist >= max(CLEAR_START, body + 0.1))
     if len(ii) == 0:
@@ -151,7 +151,7 @@ def real_map(seed: int, path: str | Path | None, body: float = 0.25) -> SimWorld
     return world
 
 
-BODY_RADIUS = 0.35  # = costmap.robot_radius_m : dégagement exigé par le planificateur
+BODY_RADIUS = 0.35  # = costmap.robot_radius_m: clearance required by the planner
 
 
 def _reachable(world: SimWorld, body: float = BODY_RADIUS) -> bool:

@@ -1,4 +1,4 @@
-"""Pipeline complet sur la vraie vidéo (modèles réels, caches)."""
+"""Full pipeline on the real video (real models, caches)."""
 
 import json
 
@@ -33,17 +33,17 @@ def test_target_confirmed(offline):
 
 
 def test_approach_if_close_at_end(offline):
-    """APPROACHING/ARRIVED atteint si la vidéo finit près de la gourde (< 1,2 m) ; sinon informatif."""
+    """APPROACHING/ARRIVED reached if the video ends near the bottle (< 1.2 m); informative otherwise."""
     d = offline["final_distance_m"]
     update_report("offline", {"final_distance_check": d})
     if d is None or d >= 1.2:
-        pytest.skip(f"distance finale {d} ≥ 1,2 m : informatif")
+        pytest.skip(f"final distance {d} ≥ 1.2 m: informative")
     assert offline["reached_approach"]
 
 
 @pytest.mark.timeout(400)
 def test_realtime_30s():
-    """Graphe multi-processus 30 s en replay : pas de crash, arrêt propre, latences consignées."""
+    """Multi-process graph for 30 s in replay: no crash, clean stop, latencies recorded."""
     from visionaid.apps.run_realtime import run
 
     raw = load_raw()

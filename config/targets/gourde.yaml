@@ -1,7 +1,7 @@
-# Fiche cible : gourde grise et orange (référence de la phase 1, calibrée en phase 3)
+# Target card: grey and orange water bottle (phase 1 reference, calibrated in phase 3)
 name: gourde
 label: ma gourde
-spoken: la gourde          # nom prononcé dans les annonces
+spoken: la gourde          # name spoken in the announcements
 plural: false
 phrases:
   - où est ma gourde
@@ -9,7 +9,7 @@ phrases:
   - gourde
   - bouteille d'eau
   - trouve ma gourde
-# surcharges de config/default.yaml appliquées quand cette cible est choisie
+# overrides of config/default.yaml applied when this target is chosen
 overrides:
   target:
     name: gourde

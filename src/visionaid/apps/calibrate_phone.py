@@ -1,9 +1,9 @@
-"""Calibration du téléphone à partir des sessions enregistrées (voir docs/checkpoint_enregistrements.md).
+"""Phone calibration from recorded sessions (see docs/checkpoint_enregistrements.md).
 
-Exemples :
+Examples:
     uv run python -m visionaid.apps.calibrate_phone --camera data/sessions/…_calib_camera
     uv run python -m visionaid.apps.calibrate_phone --imu data/sessions/…_calib_imu
-Résultats : config/calib/<phone.device>_camera.yaml et _imu.yaml (chargés automatiquement).
+Results: config/calib/<phone.device>_camera.yaml and _imu.yaml (loaded automatically).
 """
 
 from __future__ import annotations
@@ -28,15 +28,15 @@ log = get_logger("calibrate_phone")
 def calibrate_camera_session(
     cfg, session_dir, pattern=(9, 6), square_mm: float | None = None, out: Path | None = None
 ) -> dict:
-    """Calibre la caméra sur les vues `calib/` d'une session ; écrit le YAML de l'appareil."""
+    """Calibrates the camera on the `calib/` views of a session; writes the device YAML."""
     s = load_session(session_dir)
     files = s.calib_files
     if not files:
-        raise FileNotFoundError(f"aucune vue de calibration dans {s.dir / 'calib'}")
+        raise FileNotFoundError(f"no calibration view in {s.dir / 'calib'}")
     sq = square_mm / 1000.0 if square_mm else square_size_from_notes(s.meta.get("notes", ""))
     if sq is None:
         log.warning(
-            "Taille de case inconnue (notes « case = xx mm ») : 25 mm supposés ; K reste juste"
+            "Unknown square size (notes \"case = xx mm\"): 25 mm assumed; K stays right"
         )
         sq = 0.025
     cal = calibrate_images(files, pattern, sq)
@@ -64,7 +64,7 @@ def calibrate_camera_session(
     }
     if abs(cal.hfov_long_side_deg - hfov_cfg) > 8:
         log.warning(
-            "Champ de vision calibré %.1f° éloigné de la valeur par défaut %.1f°",
+            "Calibrated field of view %.1f° far from the default value %.1f°",
             cal.hfov_long_side_deg,
             hfov_cfg,
         )
@@ -72,10 +72,10 @@ def calibrate_camera_session(
 
 
 def calibrate_imu_session(cfg, session_dir, out: Path | None = None, every: int = 1) -> dict:
-    """Calibre biais, décalage et rotation IMU ↔ caméra ; écrit le YAML de l'appareil."""
+    """Calibrates IMU ↔ camera bias, offset and rotation; writes the device YAML."""
     s = load_session(session_dir)
     if len(s.imu_t) < 50:
-        raise ValueError(f"session sans IMU exploitable : {s.dir}")
+        raise ValueError(f"session without usable IMU: {s.dir}")
     src = SessionSource.from_config(cfg, s.dir)
     imgs, ts = [], []
     for f in src:
@@ -107,9 +107,9 @@ def calibrate_imu_session(cfg, session_dir, out: Path | None = None, every: int 
 
 def main(argv=None) -> dict:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("--camera", default=None, help="session avec vues de calibration (damier)")
-    ap.add_argument("--imu", default=None, help="session de calibration IMU (rotations)")
-    ap.add_argument("--pattern", default="9x6", help="coins intérieurs, ex. 9x6")
+    ap.add_argument("--camera", default=None, help="session with calibration views (checkerboard)")
+    ap.add_argument("--imu", default=None, help="IMU calibration session (rotations)")
+    ap.add_argument("--pattern", default="9x6", help="inner corners, e.g. 9x6")
     ap.add_argument("--square-mm", type=float, default=None)
     args = ap.parse_args(argv)
     cfg = load_config()
@@ -118,7 +118,7 @@ def main(argv=None) -> dict:
         pat = tuple(int(x) for x in args.pattern.lower().split("x"))
         res["camera"] = calibrate_camera_session(cfg, args.camera, pat, args.square_mm)
     if args.imu:
-        cfg = load_config()  # recharge : la calibration caméra vient peut-être d'être écrite
+        cfg = load_config()  # reload: the camera calibration may just have been written
         res["imu"] = calibrate_imu_session(cfg, args.imu)
     if not res:
         ap.print_help()

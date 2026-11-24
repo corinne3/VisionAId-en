@@ -1,4 +1,4 @@
-"""Blocs du graphe temps réel (importables par les sous-processus du bus)."""
+"""Blocks of the real-time graph (importable by the bus subprocesses)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def _cfg(raw: dict):
 
 
 class ReplaySourceBlock:
-    """Lit la vidéo au rythme réel (en boucle) à partir de l'instant mural `_t0_wall`."""
+    """Reads the video at real-time pace (looping) from the wall-clock instant `_t0_wall`."""
 
     def __init__(self, raw: dict) -> None:
         from visionaid.io.sources import ReplaySource, VideoFileSource
@@ -39,7 +39,7 @@ class ReplaySourceBlock:
 
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None:
         f = self.src.read()
-        if f is None:  # fin de vidéo : on reboucle (temps et index continus)
+        if f is None:  # end of video: loop again (continuous time and index)
             self.skipped += self.src.skipped
             if self.last is not None:
                 self.offset_t = self.last.t + 1.0 / self.src.fps
@@ -58,10 +58,10 @@ class ReplaySourceBlock:
 
 
 class SessionReplayBlock:
-    """Rejoue une session téléphone au rythme réel (en boucle) : publie `frame` et `imu`.
+    """Replays a phone session at real-time pace (looping): publishes `frame` and `imu`.
 
-    Les temps sont ramenés au début de la session (comme le temps vidéo de `ReplaySourceBlock`),
-    images et IMU avec le même décalage ; `t_phone` garde l'horloge d'origine.
+    Times are brought back to the start of the session (like the video time of `ReplaySourceBlock`),
+    images and IMU with the same offset; `t_phone` keeps the original clock.
     """
 
     def __init__(self, raw: dict) -> None:
@@ -87,7 +87,7 @@ class SessionReplayBlock:
         from visionaid.bus.messages import ImuBatch
 
         f = self.src.read()
-        if f is None:  # fin de session : on reboucle (temps et index continus, IMU repart)
+        if f is None:  # end of session: loop again (continuous time and index, IMU restarts)
             self.skipped += self.src.skipped
             if self.last is not None:
                 self.offset_t = self.last.t + 1.0 / self.src.fps
@@ -130,15 +130,15 @@ def make_perception(raw: dict):
 
 
 class GeometryBlock:
-    """Profondeur + odométrie visuelle sur la dernière frame disponible."""
+    """Depth + visual odometry on the latest available frame."""
 
     def __init__(self, raw: dict) -> None:
         from visionaid.perception.depth import DepthEstimator
         from visionaid.pose.source import make_pose_source
 
         cfg = _cfg(raw)
-        self.depth = DepthEstimator(cfg)  # sans cache : latence réelle
-        # VIO si la source publie l'IMU (téléphone, session) ; VO sinon (vidéo)
+        self.depth = DepthEstimator(cfg)  # no cache: real latency
+        # VIO if the source publishes the IMU (phone, session); VO otherwise (video)
         self.vo = make_pose_source(cfg, bool(raw.get("_imu")))
         self.n = 0
 
@@ -165,14 +165,14 @@ class GeometryBlock:
 
 
 class WorldBlock:
-    """Modèle du monde ; associe chaque (profondeur, pose) aux détections de la même frame."""
+    """World model; associates each (depth, pose) with the detections of the same frame."""
 
     def __init__(self, raw: dict) -> None:
         from visionaid.mapping.world_model import WorldModel
 
         self.cfg = _cfg(raw)
         self.wm = WorldModel(self.cfg)
-        # images du téléphone : intrinsèques de l'appareil (calibration de la phase 17)
+        # phone images: device intrinsics (phase 17 calibration)
         self.use_phone_intrinsics = bool(raw.get("_session") or raw.get("_phone"))
         self._K: dict = {}
         self.dets: OrderedDict = OrderedDict()
@@ -191,7 +191,7 @@ class WorldBlock:
         cmd = inputs.get("command")
         if cmd is not None and cmd.id != self.command_id:
             self.command_id = int(cmd.id)
-            self.wm.reset_target(cmd.id)  # nouvelle demande : cible oubliée, carte gardée
+            self.wm.reset_target(cmd.id)  # new request: target forgotten, map kept
             self.dets.clear()
         det = inputs.get("detections")
         if det is not None:
@@ -217,11 +217,11 @@ class WorldBlock:
         K = self._K[(w, h)]
         frame = Frame(
             d.t, d.frame_idx, np.zeros((1, w, 3), np.uint8), K
-        )  # seuls t, K et la largeur servent
+        )  # only t, K and the width are used
         dets = self.dets.get(d.frame_idx)
         if dets is None and self.dets:
-            # perception et géométrie traitent des frames différentes (conflation) : on accepte
-            # la détection la plus proche à ±3 frames (≤ 100 ms)
+            # perception and geometry process different frames (conflation): we accept
+            # the closest detection within ±3 frames (≤ 100 ms)
             k = min(self.dets, key=lambda i: abs(i - d.frame_idx))
             if abs(k - d.frame_idx) <= 3:
                 dets = self.dets[k]
@@ -279,7 +279,7 @@ def make_guidance(raw: dict):
 
 
 class CueSink:
-    """Collecte les consignes : latence de bout en bout (capture → consigne), cadence."""
+    """Collects the instructions: end-to-end latency (capture → instruction), rate."""
 
     def __init__(self, raw: dict) -> None:
         self.t0_wall = float(raw.get("_t0_wall", time.time()))
@@ -302,7 +302,7 @@ class CueSink:
         self.t_last = now
         self.n_all = getattr(self, "n_all", 0) + 1
         if c.frame_idx == getattr(self, "_last_idx", None):
-            return None  # consigne répétée (minuteur 20 Hz) : latence comptée une seule fois
+            return None  # repeated instruction (20 Hz timer): latency counted only once
         self._last_idx = c.frame_idx
         self.lat.append(now - (self.t0_wall + c.t))
         self.states[c.state] = self.states.get(c.state, 0) + 1

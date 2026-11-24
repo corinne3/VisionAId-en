@@ -1,6 +1,6 @@
-"""Protocole téléphone → PC (version 1) : constantes, (dé)codage des images et des lots IMU.
+"""Phone → computer protocol (version 1): constants, (de)coding of images and IMU batches.
 
-Voir `docs/protocol.md`.
+See `docs/protocol.md`.
 """
 
 from __future__ import annotations
@@ -20,12 +20,12 @@ GYRO_UNITS = {"deg/s": math.pi / 180.0, "rad/s": 1.0}
 
 
 class ProtocolError(ValueError):
-    """Message mal formé ou version inconnue."""
+    """Malformed message or unknown version."""
 
 
 @dataclass
 class FramePacket:
-    """Image reçue : en-tête + JPEG brut."""
+    """Received image: header + raw JPEG."""
 
     seq: int
     t_phone: float
@@ -36,7 +36,7 @@ class FramePacket:
 
 
 def pack_frame(seq: int, t_phone: float, w: int, h: int, jpeg: bytes, calib: bool = False) -> bytes:
-    """Construit un message binaire d'image (côté téléphone ; utilisé par le faux téléphone)."""
+    """Builds a binary image message (phone side; used by the fake phone)."""
     hdr = json.dumps(
         {"type": "frame", "seq": seq, "t_phone": t_phone, "w": w, "h": h, "calib": calib}
     ).encode()
@@ -44,21 +44,21 @@ def pack_frame(seq: int, t_phone: float, w: int, h: int, jpeg: bytes, calib: boo
 
 
 def unpack_frame(data: bytes) -> FramePacket:
-    """Décode un message binaire d'image."""
+    """Decodes a binary image message."""
     if len(data) < 4:
-        raise ProtocolError("message binaire trop court")
+        raise ProtocolError("binary message too short")
     (n,) = struct.unpack(">I", data[:4])
     if n <= 0 or 4 + n > len(data):
-        raise ProtocolError("longueur d'en-tête invalide")
+        raise ProtocolError("invalid header length")
     try:
         hdr = json.loads(data[4 : 4 + n].decode())
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise ProtocolError(f"en-tête illisible : {e}") from e
+        raise ProtocolError(f"unreadable header: {e}") from e
     if hdr.get("type") != "frame":
-        raise ProtocolError("type d'en-tête inattendu")
+        raise ProtocolError("unexpected header type")
     jpeg = data[4 + n :]
     if not jpeg:
-        raise ProtocolError("image vide")
+        raise ProtocolError("empty image")
     try:
         return FramePacket(
             int(hdr["seq"]),
@@ -69,28 +69,28 @@ def unpack_frame(data: bytes) -> FramePacket:
             jpeg,
         )
     except (KeyError, TypeError, ValueError) as e:
-        raise ProtocolError(f"en-tête incomplet : {e}") from e
+        raise ProtocolError(f"incomplete header: {e}") from e
 
 
 def check_hello(msg: dict) -> None:
-    """Vérifie le message `hello` (version, unités du gyroscope)."""
+    """Checks the `hello` message (version, gyroscope units)."""
     if msg.get("type") != "hello":
-        raise ProtocolError("le premier message doit être « hello »")
+        raise ProtocolError("the first message must be \"hello\"")
     v = msg.get("protocol")
     if v not in SUPPORTED_VERSIONS:
         raise ProtocolError(
-            f"version de protocole {v!r} non prise en charge (attendu : {sorted(SUPPORTED_VERSIONS)})"
+            f"protocol version {v!r} not supported (expected: {sorted(SUPPORTED_VERSIONS)})"
         )
     if msg.get("gyro_units", "deg/s") not in GYRO_UNITS:
-        raise ProtocolError(f"unité de gyroscope inconnue : {msg.get('gyro_units')!r}")
+        raise ProtocolError(f"unknown gyroscope unit: {msg.get('gyro_units')!r}")
 
 
 def imu_batch_from_json(
     samples: list, gyro_units: str = "deg/s", t_recv: float | None = None
 ) -> ImuBatch:
-    """Lot IMU JSON `[[t, gx, gy, gz, ax, ay, az], …]` → `ImuBatch` (gyro en rad/s).
+    """JSON IMU batch `[[t, gx, gy, gz, ax, ay, az], …]` → `ImuBatch` (gyro in rad/s).
 
-    Les lignes incomplètes ou non finies sont ignorées (capteur absent un instant).
+    Incomplete or non-finite rows are ignored (sensor missing for a moment).
     """
     rows = []
     for s in samples:

@@ -1,4 +1,4 @@
-# Configuration VisionAId — toutes les constantes du pipeline.
+# Configuration VisionAId — all the constants of the pipeline.
 device: auto            # auto | mps | cpu
 
 paths:
@@ -10,19 +10,19 @@ paths:
 
 target:
   name: gourde
-  spoken: la gourde       # nom prononcé dans les annonces (remplacé par la fiche cible)
+  spoken: la gourde       # name spoken in the announcements (replaced by the target card)
   plural: false
-  height_m: 0.25          # hauteur réelle de la gourde (contrôle d'échelle)
-  query: null             # prompt fixe (« où sont mes clés ») ; résolu via config/targets/*.yaml
+  height_m: 0.25          # real height of the bottle (scale check)
+  query: null             # fixed prompt (« où sont mes clés »); resolved through config/targets/*.yaml
   sheets_dir: config/targets
 
 video:
-  width: 640              # largeur après redimensionnement (px)
+  width: 640              # width after resizing (px)
   apply_rotation: true
 
 intrinsics:
-  hfov_deg: 69.0          # champ horizontal (dans l'orientation capteur paysage)
-  calibration_file: null  # fichier OpenCV (yaml/npz) avec K si disponible
+  hfov_deg: 69.0          # horizontal field (in the landscape sensor orientation)
+  calibration_file: null  # OpenCV file (yaml/npz) with K if available
   estimate_from_model: false
 
 replay:
@@ -56,29 +56,29 @@ reid:
   color_model: orange_gray  # orange_gray | none
   w_embed: 0.6
   w_color: 0.4
-  textonly_conf: 0.35       # cible sans photo de référence : confiance de détection minimale
-  text_only: false          # mode démo (run_live --demo) : un seul objet de la catégorie dans la
-                            # pièce, toute détection est la cible (pas de photos ni de couleur)
+  textonly_conf: 0.35       # target without a reference photo: minimum detection confidence
+  text_only: false          # demo mode (run_live --demo): a single object of the category in the
+                            # room, any detection is the target (no photos or colour)
   crop_size: 224
   n_augment_gallery: 12
   threshold_file: config/reid_threshold.yaml
   default_threshold: 0.6
-  # Couleurs HSV (OpenCV : H dans [0,180], S,V dans [0,255])
+  # HSV colours (OpenCV: H in [0,180], S,V in [0,255])
   orange_h: [5, 30]
   orange_s_min: 150
   orange_v_min: 100
   gray_s_max: 140
   gray_v_min: 50
-  orange_frac_ref: 0.30    # fraction d'orange attendue (normalisation du score)
+  orange_frac_ref: 0.30    # expected orange fraction (score normalisation)
   gray_frac_ref: 0.35
   n_calib_aug: 30
 
 tracker:
   iou_match: 0.3
   confirm_frames: 3
-  candidate_ratio: 0.85     # cible probable : score lissé ≥ 0,85 × seuil ReID…
-  candidate_frames: 5       # …pendant au moins 5 images consécutives (avant confirmation)…
-  candidate_min_color: 0.7  # …et part couleur lissée ≥ 0,7 (gourde orange : ≥ 0,82 ; thermos noir : 0,50)
+  candidate_ratio: 0.85     # probable target: smoothed score ≥ 0.85 × ReID threshold…
+  candidate_frames: 5       # …for at least 5 consecutive frames (before confirmation)…
+  candidate_min_color: 0.7  # …and smoothed colour share ≥ 0.7 (orange bottle: ≥ 0.82; black thermos: 0.50)
   lost_frames: 10
   max_age_frames: 30
   score_ema: 0.5
@@ -92,7 +92,7 @@ depth:
   input_width: 518
   temporal_smoothing: false
   smoothing_alpha: 0.5
-  scale_factor: 0.76      # facteur d'échelle global estimé sur la gourde (voir DECISIONS.md)
+  scale_factor: 0.76      # global scale factor estimated on the bottle (see DECISIONS.md)
   min_m: 0.1
   max_m: 20.0
 
@@ -127,29 +127,29 @@ costmap:
   init_size_m: 12.0
   obstacle_band_m: [0.10, 1.90]
   floor_band_m: 0.08
-  obstacle_height_slope: 0.04  # m de tolérance supplémentaire par m de distance
+  obstacle_height_slope: 0.04  # m of extra tolerance per m of distance
   l_occ: 0.85
   l_free: -0.4
   l_min: -4.0
   l_max: 4.0
-  occ_threshold: 0.6       # proba > seuil => occupé
-  free_threshold: 0.35     # proba < seuil => libre
-  decay_half_life_s: 20.0  # oubli : demi-vie des log-odds (s)
+  occ_threshold: 0.6       # probability > threshold => occupied
+  free_threshold: 0.35     # probability < threshold => free
+  decay_half_life_s: 20.0  # forgetting: half-life of the log-odds (s)
   robot_radius_m: 0.35
-  cost_decay_m: 0.5        # portée du coût décroissant autour des obstacles
+  cost_decay_m: 0.5        # range of the decreasing cost around obstacles
   cost_scale: 2.0
   max_range_m: 5.0
-  occ_range_m: 3.0         # obstacles marqués seulement jusqu'à 3 m (profondeur fiable)
-  carve_radius_m: 0.20     # rayon libéré sous l'utilisateur (là où il marche, c'est libre)
-  walked_free_bias: 0.4    # biais « libre » par mise à jour sur les cellules parcourues (< l_occ)
+  occ_range_m: 3.0         # obstacles marked only up to 3 m (reliable depth)
+  carve_radius_m: 0.20     # radius freed under the user (where they walk, it is free)
+  walked_free_bias: 0.4    # "free" bias per update on walked cells (< l_occ)
   pixel_step: 6
   raycast: true
 
 anchor:
-  candidate_min_meas: 4    # mesures 3D cohérentes avant de publier une cible probable
-  candidate_max_offset_m: 1.0  # cible confirmée plus loin du candidat : le candidat était faux
+  candidate_min_meas: 4    # consistent 3D measurements before publishing a probable target
+  candidate_max_offset_m: 1.0  # target confirmed further from the candidate: the candidate was false
   process_noise: 0.002     # m^2 / s
-  meas_noise: 0.05         # m^2 (base, divisée par la confiance)
+  meas_noise: 0.05         # m^2 (base, divided by the confidence)
   shrink_box: 0.3
   seen_timeout_s: 0.5
   stale_after_s: 30.0
@@ -157,34 +157,34 @@ anchor:
 
 planning:
   algorithm: dstar        # astar | dstar
-  unknown_cost: 3.0         # coût des zones inconnues (seulement si allow_unknown)
-  allow_unknown: false      # jamais de chemin par une zone jamais vue (noire dans la vue monde)…
-  frontier_fallback: true   # …sans chemin connu : chemin jusqu'à la limite de la zone connue
+  unknown_cost: 3.0         # cost of unknown areas (only if allow_unknown)
+  allow_unknown: false      # never a path through a never-seen area (black in the world view)…
+  frontier_fallback: true   # …without a known path: path up to the edge of the known area
   lookahead_m: 1.0
   replan_hz: 5.0
   target_search_radius_m: 1.5
-  commit_ratio: 0.2        # garde le chemin précédent s'il fait au plus +20 % …
-  commit_margin_m: 0.3     # … + 30 cm de plus que le nouveau, et reste praticable
-  near_goal_m: 0.35        # chemin restant plus court : la visée pointe vers l'objet
-  reach_m: 0.55            # but « à portée de main » : on attrape l'objet depuis le bord d'une table
-  approach_zone_m: 2.0     # près de l'objet (≤ 2 m : tout un passage, marge comprise) …
-  approach_clearance_m: 0.25  # … la marge passe de 0,35 m à 0,25 m (couloir corporel)
-  approach_penalty: 3.0    # coût des cellules ainsi relâchées (on ne s'y engage que si utile)
-  approach_detour_ratio: 1.3  # marge réduite seulement si la marge normale impose un détour > ×1,3 …
-  approach_detour_slack_m: 0.5  # … + 0,5 m
-  goal_keep_ratio: 0.15    # hystérésis du but : garde le précédent s'il reste à +15 % du meilleur
+  commit_ratio: 0.2        # keeps the previous path if it is at most +20% …
+  commit_margin_m: 0.3     # … + 30 cm longer than the new one, and stays practicable
+  near_goal_m: 0.35        # shorter remaining path: aiming points to the object
+  reach_m: 0.55            # goal "within arm's reach": the object is grabbed from the edge of a table
+  approach_zone_m: 2.0     # near the object (≤ 2 m: a whole passage, margin included) …
+  approach_clearance_m: 0.25  # … the margin goes from 0.35 m to 0.25 m (body corridor)
+  approach_penalty: 3.0    # cost of the cells relaxed this way (used only if useful)
+  approach_detour_ratio: 1.3  # reduced margin only if the normal margin forces a detour > ×1.3 …
+  approach_detour_slack_m: 0.5  # … + 0.5 m
+  goal_keep_ratio: 0.15    # goal hysteresis: keeps the previous one if it stays within +15% of the best
 
 guidance:
   approach_m: 1.2
   arrived_m: 0.5
   obstacle_m: 0.6
   obstacle_cone_deg: 30.0
-  obstacle_corridor_m: 0.25   # demi-largeur du couloir balayé par le corps
-  final_direct_m: 0.30        # en approche, guidage direct quand le but est plus près
-  # continuité de la direction du son (repère monde ; la rotation du corps n'est pas freinée)
-  direction_tau_s: 0.3          # lissage : un changement de chemin glisse au lieu de sauter
-  direction_max_rate_dps: 90.0  # au plus 90°/s : jamais de saut d'une oreille à l'autre
-  direction_safe_m: 1.5         # sauf si la direction lissée mène sur un obstacle à < 1,5 m
+  obstacle_corridor_m: 0.25   # half width of the corridor swept by the body
+  final_direct_m: 0.30        # on approach, direct guidance when the goal is closer
+  # continuity of the sound direction (world frame; body rotation is not slowed down)
+  direction_tau_s: 0.3          # smoothing: a path change glides instead of jumping
+  direction_max_rate_dps: 90.0  # at most 90°/s: never a jump from one ear to the other
+  direction_safe_m: 1.5         # unless the smoothed direction leads onto an obstacle < 1.5 m away
   approach_lookahead_m: 0.5
   hysteresis_m: 0.15
   min_state_dwell_s: 0.3
@@ -193,79 +193,79 @@ guidance:
   T_cam_head: [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
 
 audio:
-  # sons préparés par `python -m visionaid.audio.prepare` (VisionAid_Sounds 1 à 4, volume égalisé)
+  # sounds prepared by `python -m visionaid.audio.prepare` (VisionAid_Sounds 1 to 4, equalised volume)
   sounds_dir: assets/sounds/processed
   sounds:
-    guide: {file: chemin.wav, gain_db: 0}        # son 2 : le chemin, note répétée et pannée
-    search: {file: recherche.wav, gain_db: -4}   # son 4 : objet pas encore trouvé
-    arrived: {file: arrivee.wav, gain_db: 0}     # son 3 : arrivée, une fois
-    obstacle: {file: obstacles.wav, gain_db: 0}  # son 1 : nappe en boucle, volume selon la distance
-  # chemin : pan stéréo à puissance constante, pan = azimut / 90° (tout à gauche à 90° et au-delà :
-  # 100 % oreille gauche, 0 % droite). Chemin derrière : le côté du demi-tour le plus court est
-  # gardé tant que le chemin ne passe pas franchement de l'autre côté (|azimut| < back_hold_deg)
+    guide: {file: chemin.wav, gain_db: 0}        # sound 2: the path, repeated and panned note
+    search: {file: recherche.wav, gain_db: -4}   # sound 4: object not found yet
+    arrived: {file: arrivee.wav, gain_db: 0}     # sound 3: arrival, once
+    obstacle: {file: obstacles.wav, gain_db: 0}  # sound 1: looping pad, volume according to distance
+  # path: constant-power stereo pan, pan = azimuth / 90° (fully left at 90° and beyond:
+  # 100% left ear, 0% right). Path behind: the side of the shortest U-turn is
+  # kept as long as the path does not clearly move to the other side (|azimuth| < back_hold_deg)
   back_hold_deg: 150
-  smoothing_s: 0.05           # lissage du pan (aucun clic)
-  # tempo du chemin : une note toutes les `guide_interval_far_s` au loin ; en dessous de
-  # `guide_accel_m` de la cible, l'espacement diminue jusqu'à `guide_interval_near_s` à `guide_near_m`
+  smoothing_s: 0.05           # pan smoothing (no click)
+  # path tempo: one note every `guide_interval_far_s` when far; below
+  # `guide_accel_m` from the target, the spacing decreases down to `guide_interval_near_s` at `guide_near_m`
   guide_interval_far_s: 1.2
   guide_interval_near_s: 0.35
   guide_accel_m: 2.0
   guide_near_m: 0.5
-  search_interval_s: 1.2      # recherche : rythme du son 4
-  # obstacles (couloir frontal du corps) : muet au-delà de `obstacle_far_m`, puis de
-  # `obstacle_min_db` à `obstacle_max_db` à `obstacle_near_m` et plus près (jamais plus fort que le chemin)
+  search_interval_s: 1.2      # search: rhythm of sound 4
+  # obstacles (frontal body corridor): muted beyond `obstacle_far_m`, then from
+  # `obstacle_min_db` to `obstacle_max_db` at `obstacle_near_m` and closer (never louder than the path)
   obstacle_far_m: 1.5
   obstacle_near_m: 0.4
   obstacle_min_db: -24
   obstacle_max_db: -6
-  obstacle_smoothing_s: 0.3   # volume des obstacles lissé : pas de sursaut
-  lost_obstacle_db: -12       # repérage perdu : plus de chemin, nappe à volume moyen (« arrête-toi »)
-  arrived_cooldown_s: 5.0     # le son d'arrivée ne se rejoue pas avant ce délai
+  obstacle_smoothing_s: 0.3   # smoothed obstacle volume: no startle
+  lost_obstacle_db: -12       # tracking lost: no more path, pad at medium volume ("stop")
+  arrived_cooldown_s: 5.0     # the arrival sound is not replayed before this delay
   master_gain_db: 0
-  watchdog_s: 1.5             # téléphone : sans consigne depuis ce délai → repérage perdu
-  sample_rate: 44100          # rendu hors ligne (WAV)
+  watchdog_s: 1.5             # phone: without an instruction for this delay → tracking lost
+  sample_rate: 44100          # offline rendering (WAV)
 
-# ---------------------------------------------------------------- voix : demande et annonces
+# ---------------------------------------------------------------- voice: request and announcements
 command:
-  mode: prompt            # prompt (phrase fixe, --target) | stt (l'utilisateur dit ce qu'il cherche)
-  stt: whisper            # whisper (son enregistré par le téléphone, transcrit sur le PC) | phone (reconnaissance de Safari)
-  whisper_model: openai/whisper-small   # ~1 Go, téléchargé au premier usage
+  mode: prompt            # prompt (fixed phrase, --target) | stt (the user says what they are looking for)
+  stt: whisper            # whisper (sound recorded by the phone, transcribed on the computer) | phone (Safari recognition)
+  whisper_model: openai/whisper-small   # ~1 GB, downloaded on first use
   language: fr
-  max_record_s: 6.0       # enregistrement de la demande sur le téléphone : durée maximale
-  repeat_s: 1.0           # la demande en cours est republiée sur le bus (nœuds lents à démarrer)
+  max_record_s: 6.0       # recording of the request on the phone: maximum duration
+  repeat_s: 1.0           # the current request is republished on the bus (nodes slow to start)
 
 tts:
-  output: auto            # auto (téléphone en direct, haut-parleur du Mac en rejeu) | phone | mac | off
+  output: auto            # auto (phone live, Mac speaker in replay) | phone | mac | off
   lang: fr-FR
-  rate: 1.05              # débit de la voix du téléphone (1 = normal)
-  mac_voice: Thomas       # voix française de macOS (`say -v '?' | grep fr_`) : rejeu et rendu hors ligne
+  rate: 1.05              # speech rate of the phone voice (1 = normal)
+  mac_voice: Thomas       # French macOS voice (`say -v '?' | grep fr_`): replay and offline rendering
   mac_rate_wpm: 190
-  hold_s: 1.0             # une phrase reste sur les consignes pendant ce délai (pertes de messages)
+  hold_s: 1.0             # a sentence stays on the instructions for this delay (message losses)
 
 landmarks:
-  enabled: true           # meubles détectés en même temps que la cible (même passe YOLOE)
+  enabled: true           # furniture detected at the same time as the target (same YOLOE pass)
   prompts: ["table", "coffee table", "desk", "sofa", "armchair", "chair", "bed", "shelf",
             "cabinet", "kitchen counter", "door", "television"]
-  min_conf: 0.35          # confiance minimale d'un meuble
-  publish_hz: 3.0         # meubles envoyés au modèle du monde au plus 3 fois par seconde
+  min_conf: 0.35          # minimum confidence of a piece of furniture
+  publish_hz: 3.0         # furniture sent to the world model at most 3 times per second
   pixel_step: 4
-  max_range_m: 4.5        # profondeur fiable
+  max_range_m: 4.5        # reliable depth
   min_points: 40
-  merge_m: 0.6            # même meuble : centres à moins de 0,6 m (ou emprises qui se recouvrent)
+  merge_m: 0.6            # same furniture: centres less than 0.6 m apart (or overlapping footprints)
   ema: 0.3
-  min_obs: 3              # meuble annoncé après 3 observations
+  min_obs: 3              # furniture announced after 3 observations
   max_count: 40
 
 narration:
   enabled: true
-  wait_path_s: 2.5        # objet trouvé : attend un chemin (au plus 2,5 s) pour décrire le trajet
-  far_m: 3.0              # au-delà : « au fond de la pièce »
-  approach_m: 1.6         # annonce d'approche : objet à moins de 1,6 m…
-  approach_support_m: 1.0 # … ou meuble porteur à moins de 1 m (objet à moins de 2,5 m)
+  wait_path_s: 2.5        # object found: waits for a path (at most 2.5 s) to describe the route
+  far_m: 3.0              # beyond: « au fond de la pièce » (at the far end of the room)
+  approach_m: 1.6         # approach announcement: object less than 1.6 m away…
+  approach_support_m: 1.0 # … or carrying furniture less than 1 m away (object less than 2.5 m away)
   approach_max_m: 2.5
-  moved_m: 1.0            # objet déplacé de plus de 1 m depuis l'annonce : nouvelle annonce
-  support_margin_m: 0.15  # l'objet est « sur » un meuble si son emprise (+ marge) le contient
-  near_m: 0.8             # sinon « près de » le meuble le plus proche à moins de 0,8 m
+  moved_m: 1.0            # object moved by more than 1 m since the announcement: new announcement
+  support_margin_m: 0.15  # the object is "on" a piece of furniture if its footprint (+ margin) contains it
+  near_m: 0.8             # otherwise "near" the closest furniture less than 0.8 m away
 
 sim:
   dt: 0.1
@@ -292,29 +292,29 @@ realtime:
   plan_hz: 5.0
   cue_hz: 20.0
 
-# ---------------------------------------------------------------- phase 2 : téléphone
+# ---------------------------------------------------------------- phase 2: phone
 phone:
-  device: iphone12         # nom des fichiers de calibration <calib_dir>/<device>_*.yaml
+  device: iphone12         # name of the calibration files <calib_dir>/<device>_*.yaml
   calib_dir: config/calib
-  host: auto               # auto = toutes les interfaces, IPv4 et IPv6
+  host: auto               # auto = all interfaces, IPv4 and IPv6
   https_port: 8443
-  http_port: 8080          # sert uniquement ca.crt (installation du certificat sur le téléphone)
+  http_port: 8080          # only serves ca.crt (certificate installation on the phone)
   protocol_version: 1
-  capture_width: 640       # largeur demandée à getUserMedia (portrait : petite dimension)
+  capture_width: 640       # width requested from getUserMedia (portrait: small dimension)
   capture_height: 480
   jpeg_quality: 0.7
   max_fps: 15.0
   imu_batch_ms: 50
   ping_interval_s: 1.0
   certs_dir: .certs
-  ack_timeout_s: 1.0       # le téléphone renvoie une image si l'acquittement tarde trop
+  ack_timeout_s: 1.0       # the phone resends an image if the acknowledgement takes too long
 
 body:
-  # repère corps (= tête, hypothèse du hackathon) exprimé dans la convention caméra
-  # (x droite, y bas, z avant) : identité = téléphone vertical, en portrait, sur le torse
+  # body frame (= head, hackathon assumption) expressed in the camera convention
+  # (x right, y down, z forward): identity = phone upright, in portrait, on the chest
   T_cam_body: [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
-  camera_height_m: 1.30    # hauteur de la caméra au-dessus du sol, mesurée par l'utilisateur
-  # rotation a priori repère IMU (W3C) -> repère caméra arrière en portrait
+  camera_height_m: 1.30    # camera height above the floor, measured by the user
+  # prior rotation IMU frame (W3C) -> rear camera frame in portrait
   R_cam_imu: [[1,0,0],[0,-1,0],[0,0,-1]]
 
 session:
@@ -322,16 +322,16 @@ session:
   record: false
 
 pose:
-  source: auto             # auto (vio si IMU disponible) | vo | vio
+  source: auto             # auto (vio if IMU available) | vo | vio
 
 vio:
-  gyro_seed: true          # rotation du gyroscope comme estimation initiale du PnP
-  max_disagree_deg: 8.0    # écart VO / gyroscope au-delà duquel la VO est jugée fausse
-  degraded_max_s: 2.0      # durée maximale en orientation IMU seule avant l'état « lost »
+  gyro_seed: true          # gyroscope rotation as the initial PnP estimate
+  max_disagree_deg: 8.0    # VO / gyroscope difference beyond which the VO is judged wrong
+  degraded_max_s: 2.0      # maximum duration in IMU-only orientation before the "lost" state
   gravity_gain: 0.05
-  gravity_tolerance: 1.5   # |‖a‖ − g| (m/s²) toléré pour corriger la gravité
+  gravity_tolerance: 1.5   # |‖a‖ − g| (m/s²) tolerated to correct gravity
   gravity_init_s: 0.5
-  imu_extrapolate_s: 0.10  # avance tolérée de l'image sur le dernier gyroscope (lots de 50 ms)
+  imu_extrapolate_s: 0.10  # tolerated lead of the image over the last gyroscope (50 ms batches)
   scale:
     enabled: true
     ema: 0.1

@@ -15,10 +15,14 @@ This repository is a **fork** of [SonDePoisson/VisionAid](https://github.com/Son
 The following files were added by **Corinne Bergès** (team member, AI developer) and are released under the **MIT licence** ([LICENSE-ADDITIONS](LICENSE-ADDITIONS)):
 
 - `README.md` (English version) and `NOTICE.md`
-- `docs/en/` (English documentation) and `docs/dossier_technique_fr.md`
+- `docs/en/` (English documentation, including translations of the team's documents) and `docs/dossier_technique_fr.md`
 - `setup/` (Mac + iPhone and Windows + Android setup guides and scripts)
 - `results/` (measurements on Windows + Android)
 - `media/` (slides and photos)
+
+## Translation of the original files
+
+To make the repository readable in English, the comments, docstrings, terminal messages and web page labels of the original code were translated into English. Code logic, settings and spoken French content are unchanged. These translated files are still the original authors' code: the translation does not change who owns them, and the notice above still applies to them. The French versions are in [SonDePoisson/VisionAid](https://github.com/SonDePoisson/VisionAid).
 
 ## Third-party components
 

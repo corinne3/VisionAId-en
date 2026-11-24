@@ -32,7 +32,7 @@ def run(seq, dt=0.1):
     return [m.step(GuidanceInputs(k * dt, *row)) for k, row in enumerate(seq)]
 
 
-# (pose_lost, object_known, distance, obstacle_dist, path_valid) → état attendu (après maintien)
+# (pose_lost, object_known, distance, obstacle_dist, path_valid) → expected state (after hold)
 TABLE = [
     ("searching", [(False, False, INF, INF, False)] * 3, [SEARCHING] * 3),
     ("navigating", [(False, True, 4.0, INF, True)] * 5, [NAVIGATING] * 5),
@@ -66,7 +66,7 @@ def test_table(name, seq, expected):
 
 @pytest.mark.parametrize("sigma", [0.05, 0.3])
 def test_dwell_noisy_input(sigma):
-    """Entrées bruitées autour des seuils : jamais plus d'un changement d'état par 0,3 s."""
+    """Noisy inputs around the thresholds: never more than one state change per 0.3 s."""
     rng = np.random.default_rng(0)
     m = sm()
     dt = 1 / 30
@@ -86,7 +86,7 @@ def test_dwell_noisy_input(sigma):
 
 
 def test_hysteresis_limits_flicker():
-    """Bruit réaliste (σ = 5 cm, distance filtrée) autour du seuil d'approche : peu de changements."""
+    """Realistic noise (σ = 5 cm, filtered distance) around the approach threshold: few changes."""
     rng = np.random.default_rng(1)
     m = sm()
     for k in range(600):
@@ -111,7 +111,7 @@ def test_lost_has_priority_over_obstacle():
 
 
 def test_azimuth_sign_left_positive():
-    # tête en (0,0,1.4), regard vers +x : repère OpenCV z_cam = +x monde, x_cam = −y monde, y_cam = −z
+    # head at (0,0,1.4), looking towards +x: OpenCV frame z_cam = world +x, x_cam = world −y, y_cam = −z
     R = np.stack([[0, -1.0, 0], [0, 0, -1.0], [1.0, 0, 0]], 1)
     T = make_T(R, [0, 0, 1.4])
     az_left, el, d = relative_direction(T, np.array([2.0, 1.0, 1.4]))
@@ -147,7 +147,7 @@ def test_engine_navigating_toward_lookahead():
 
 def test_engine_obstacle_alert_from_costmap():
     e = GuidanceEngine(load_config())
-    # obstacle à 0,4 m devant (x=+0,4 → j = (0,4+2,5)/0,05 = 58 ; y=0 → i = 50)
+    # obstacle 0.4 m ahead (x=+0.4 → j = (0.4+2.5)/0.05 = 58; y=0 → i = 50)
     pose, obj, path, cm = _engine_inputs([3.0, 1.0], [(50, 58)])
     cue = e.update(0.0, 0, pose, obj, path, cm)
     assert cue.state == OBSTACLE_ALERT and cue.alert_level > 0.2
@@ -155,7 +155,7 @@ def test_engine_obstacle_alert_from_costmap():
 
 def test_engine_obstacle_behind_ignored():
     e = GuidanceEngine(load_config())
-    pose, obj, path, cm = _engine_inputs([3.0, 1.0], [(50, 42)])  # x = −0,4 : derrière
+    pose, obj, path, cm = _engine_inputs([3.0, 1.0], [(50, 42)])  # x = −0.4: behind
     assert e.update(0.0, 0, pose, obj, path, cm).state == NAVIGATING
 
 

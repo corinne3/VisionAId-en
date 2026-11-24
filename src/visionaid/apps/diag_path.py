@@ -1,11 +1,11 @@
-"""Diagnostic du chemin sur une session réelle : quand le guidage démarre, validité, causes d'échec,
-départ dans une zone gonflée, stabilité de la direction de visée.
+"""Path diagnostic on a real session: when guidance starts, validity, failure causes,
+start inside an inflated zone, stability of the aiming direction.
 
-Exemples :
+Examples:
     uv run python -m visionaid.apps.diag_path data/sessions/20261121-140325_gourde_piece
     uv run python -m visionaid.apps.diag_path --all --out outputs/diag
-Résultats : un résumé JSON par session, plus le détail image par image (`<session>_frames.json`),
-qui sert à tracer la comparaison avant/après (`--compare`).
+Results: a JSON summary per session, plus the frame-by-frame detail (`<session>_frames.json`),
+used to plot the before/after comparison (`--compare`).
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ def _wrap_deg(a: float) -> float:
 
 
 def unknown_length(cm, pts: np.ndarray, skip_m: float = 0.3, step: float = 0.05) -> float:
-    """Longueur (m) du chemin dans des cellules inconnues (hors des `skip_m` premiers mètres,
-    sous les pieds de l'utilisateur)."""
+    """Length (m) of the path in unknown cells (excluding the first `skip_m` metres,
+    under the user's feet)."""
     if len(pts) < 2:
         return 0.0
     seg = np.diff(pts, axis=0)
@@ -42,13 +42,13 @@ def unknown_length(cm, pts: np.ndarray, skip_m: float = 0.3, step: float = 0.05)
     i = np.floor((y - cm.origin[1]) / cm.resolution).astype(int)
     h, w = cm.state.shape
     ok = (i >= 0) & (i < h) & (j >= 0) & (j < w)
-    unk = np.ones(len(s), bool)  # hors carte = inconnu
+    unk = np.ones(len(s), bool)  # outside the map = unknown
     unk[ok] = cm.state[i[ok], j[ok]] == UNKNOWN
     return float(unk.sum() * step)
 
 
 def guide_bearing_deg(cue, pose) -> float | None:
-    """Direction du son de guidage dans le repère monde (°), ou None hors guidage."""
+    """Direction of the guidance sound in the world frame (°), or None outside guidance."""
     import math
 
     from visionaid.guidance.cues import head_frame
@@ -62,7 +62,7 @@ def guide_bearing_deg(cue, pose) -> float | None:
 
 
 def diag_session(session_dir, cfg=None) -> tuple[dict, list[dict]]:
-    """Rejoue la session dans le pipeline offline et mesure la qualité du chemin."""
+    """Replays the session in the offline pipeline and measures path quality."""
     from visionaid.io.session import SessionImu, SessionSource, load_session
     from visionaid.perception.depth import video_depth_estimator
     from visionaid.perception.pipeline import run_video_perception
@@ -104,11 +104,11 @@ def diag_session(session_dir, cfg=None) -> tuple[dict, list[dict]]:
         }
         if not path.valid:
             if not known:
-                rec["why"] = "objet inconnu"
+                rec["why"] = "object unknown"
             elif not inside:
-                rec["why"] = "utilisateur hors carte"
+                rec["why"] = "user outside the map"
             else:
-                rec["why"] = "aucun chemin (carte coupée ou départ bloqué)"
+                rec["why"] = "no path (map cut off or start blocked)"
         plans.append(rec)
         return path
 
@@ -144,7 +144,7 @@ def diag_session(session_dir, cfg=None) -> tuple[dict, list[dict]]:
 
 
 def summarize(name: str, frames: list[dict], plans: list[dict]) -> dict:
-    """Indicateurs agrégés d'une session."""
+    """Aggregated indicators of a session."""
     valid = [p for p in plans if p["valid"]]
     why: dict[str, int] = {}
     for p in plans:
@@ -179,7 +179,7 @@ def summarize(name: str, frames: list[dict], plans: list[dict]) -> dict:
         "aim_jump_deg_med": round(float(np.median(jumps)), 1) if jumps else None,
         "aim_jump_deg_p90": round(float(np.percentile(jumps, 90)), 1) if jumps else None,
         "aim_jumps_over_30": int(np.sum(np.array(jumps) > 30)) if jumps else 0,
-        # chemins passant par des zones jamais vues (> 20 cm hors des pieds de l'utilisateur)
+        # paths going through never-seen areas (> 20 cm away from the user's feet)
         "unknown_path_frac": round(
             float(np.mean([p.get("unknown_m", 0.0) > 0.2 for p in valid])), 3
         )
@@ -193,7 +193,7 @@ def summarize(name: str, frames: list[dict], plans: list[dict]) -> dict:
 
 
 def _sound_jumps(frames: list[dict]) -> dict:
-    """Sauts de la direction du son de guidage (repère monde) d'une image à la suivante."""
+    """Jumps of the guidance sound direction (world frame) from one frame to the next."""
     d = []
     for a, b in zip(frames, frames[1:], strict=False):
         if a.get("guide_deg") is None or b.get("guide_deg") is None or b["t"] - a["t"] > 0.5:
@@ -206,13 +206,13 @@ def _sound_jumps(frames: list[dict]) -> dict:
     }
 
 
-# couleurs : palette de référence validée (catégorielle, ordre fixe) — avant = 1, après = 2
+# colours: validated reference palette (categorical, fixed order) — before = 1, after = 2
 C_BEFORE, C_AFTER = "#2a78d6", "#eb6834"
 INK, INK2, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
 
 
 def _aim_series(detail: dict) -> tuple[np.ndarray, np.ndarray]:
-    """Temps et écart (°) entre la direction de visée et la direction de l'objet."""
+    """Time and difference (°) between the aiming direction and the object direction."""
     ts, ds = [], []
     for p in detail["plans"]:
         if not p["valid"] or p["obj"] is None:
@@ -229,10 +229,10 @@ def compare(
     after: Path,
     out_png: Path,
     sim: tuple | None = None,
-    title: str = "Chemin vers l'objet — avant / après",
+    title: str = "Path to the object — before / after",
 ) -> Path:
-    """Image avant/après : pour chaque session, quand un chemin valide existe, et l'écart de la
-    direction de visée ; tableau des indicateurs (et du simulateur si fourni)."""
+    """Before/after image: for each session, when a valid path exists, and the error of the
+    aiming direction; table of indicators (and of the simulator if provided)."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -251,10 +251,10 @@ def compare(
         db = json.loads((Path(before) / f"{name}_frames.json").read_text())
         da = json.loads((Path(after) / f"{name}_frames.json").read_text())
         short = name.split("_", 1)[1] if "_" in name else name
-        # 1) chronologie : cible connue et chemin valide
+        # 1) timeline: target known and valid path
         ax = fig.add_subplot(gs[k, 0])
         dur = max(sb["duration_s"], sa["duration_s"])
-        for row, (det, col, lab) in enumerate(((da, C_AFTER, "après"), (db, C_BEFORE, "avant"))):
+        for row, (det, col, lab) in enumerate(((da, C_AFTER, "after"), (db, C_BEFORE, "before"))):
             fr = det["frames"]
             for f0, f1 in zip(fr, fr[1:], strict=False):
                 if f0["state"] == "SEARCHING":
@@ -263,29 +263,29 @@ def compare(
                 if p0["valid"]:
                     w = min(p1["t"] - p0["t"], 0.5)
                     ax.broken_barh([(p0["t"], w)], (row - 0.32, 0.64), color=col)
-            fv = (sa if lab == "après" else sb)["first_valid_path_s"]
+            fv = (sa if lab == "after" else sb)["first_valid_path_s"]
             if fv is not None:
                 ax.annotate(
-                    f"1er chemin : {fv:.1f} s",
+                    f"1st path: {fv:.1f} s",
                     (fv, row + 0.36),
                     fontsize=9,
                     color=INK,
                     va="bottom",
                 )
-        ax.set_yticks([0, 1], ["après", "avant"])
+        ax.set_yticks([0, 1], ["after", "before"])
         ax.set_ylim(-0.6, 1.75)
         ax.set_xlim(0, dur)
-        ax.set_xlabel("temps (s)")
+        ax.set_xlabel("time (s)")
         ax.set_title(
-            f"{short} — chemin valide (couleur) / recherche (gris)", loc="left", fontsize=11
+            f"{short} — valid path (colour) / searching (grey)", loc="left", fontsize=11
         )
         for sp in ("top", "right", "left"):
             ax.spines[sp].set_visible(False)
         ax.spines["bottom"].set_color(INK2)
         ax.set_facecolor(SURFACE)
-        # 2) écart de visée / direction de l'objet
+        # 2) aiming error / object direction
         ax2 = fig.add_subplot(gs[k, 1])
-        for det, col, lab in ((db, C_BEFORE, "avant"), (da, C_AFTER, "après")):
+        for det, col, lab in ((db, C_BEFORE, "before"), (da, C_AFTER, "after")):
             t, d = _aim_series(det)
             if len(t):
                 ax2.plot(t, d, color=col, lw=2, marker="o", ms=4, label=lab)
@@ -295,9 +295,9 @@ def compare(
         ax2.set_xlim(0, dur)
         ax2.grid(axis="y", color=GRID, lw=1)
         ax2.set_xlabel("temps (s)")
-        ax2.set_ylabel("visée − direction de l'objet (°)")
+        ax2.set_ylabel("aim − object direction (°)")
         ax2.set_title(
-            f"{short} — direction indiquée (un détour est normal)", loc="left", fontsize=11
+            f"{short} — direction given (a detour is normal)", loc="left", fontsize=11
         )
         ax2.legend(frameon=False, loc="upper left", ncol=2)
         for sp in ("top", "right"):
@@ -312,37 +312,37 @@ def compare(
         rows += [
             [
                 short,
-                "1er chemin valide (s)",
+                "1st valid path (s)",
                 fmt(sb["first_valid_path_s"]),
                 fmt(sa["first_valid_path_s"]),
             ],
             [
                 short,
-                "temps en recherche",
+                "time searching",
                 fmt(sb["searching_frac"], True),
                 fmt(sa["searching_frac"], True),
             ],
             [
                 short,
-                "chemins valides (cible connue)",
+                "valid paths (target known)",
                 fmt(sb["valid_frac_when_known"], True),
                 fmt(sa["valid_frac_when_known"], True),
             ],
             [
                 short,
-                "départ bloqué",
+                "start blocked",
                 fmt(sb["start_blocked_frac"], True),
                 fmt(sa["start_blocked_frac"], True),
             ],
             [
                 short,
-                "saut de visée médian (°)",
+                "median aim jump (°)",
                 fmt(sb["aim_jump_deg_med"]),
                 fmt(sa["aim_jump_deg_med"]),
             ],
             [
                 short,
-                "sauts de visée > 30°",
+                "aim jumps > 30°",
                 fmt(sb["aim_jumps_over_30"]),
                 fmt(sa["aim_jumps_over_30"]),
             ],
@@ -350,14 +350,14 @@ def compare(
     if sim is not None:
         s0, s1 = sim
         for sc, lab in (
-            ("room", "pièce"),
-            ("corridor", "couloir"),
-            ("appearing", "obstacle surgissant"),
+            ("room", "room"),
+            ("corridor", "corridor"),
+            ("appearing", "sudden obstacle"),
         ):
             rows.append(
                 [
-                    "simulateur",
-                    f"{lab} : succès / sans collision",
+                    "simulator",
+                    f"{lab}: success / collision-free",
                     f"{100 * s0[sc]['success_rate']:.0f} / {100 * s0[sc]['collision_free_rate']:.0f} %",
                     f"{100 * s1[sc]['success_rate']:.0f} / {100 * s1[sc]['collision_free_rate']:.0f} %",
                 ]
@@ -366,7 +366,7 @@ def compare(
     axt.axis("off")
     tab = axt.table(
         cellText=rows,
-        colLabels=["", "indicateur", "avant", "après"],
+        colLabels=["", "indicator", "before", "after"],
         loc="center",
         cellLoc="left",
         colWidths=[0.16, 0.42, 0.18, 0.18],
@@ -403,19 +403,19 @@ def main(argv=None) -> list[dict]:
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("sessions", nargs="*")
-    ap.add_argument("--all", action="store_true", help="toutes les sessions de navigation")
+    ap.add_argument("--all", action="store_true", help="all navigation sessions")
     ap.add_argument("--out", default="outputs/diag")
     ap.add_argument(
         "--compare",
         nargs=2,
         metavar=("AVANT", "APRES"),
-        help="dossiers de deux diagnostics à comparer → image avant/après (pas de nouveau calcul)",
+        help="folders of two diagnostics to compare → before/after image (no new computation)",
     )
     ap.add_argument(
-        "--sim", nargs=2, metavar=("SIM_AVANT", "SIM_APRES"), help="résultats simulateur (JSON)"
+        "--sim", nargs=2, metavar=("SIM_AVANT", "SIM_APRES"), help="simulator results (JSON)"
     )
     ap.add_argument("--png", default="outputs/diag/comparaison.png")
-    ap.add_argument("--title", default="Chemin vers l'objet — avant / après")
+    ap.add_argument("--title", default="Path to the object — before / after")
     args = ap.parse_args(argv)
     if args.compare:
         sim = None

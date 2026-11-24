@@ -1,6 +1,6 @@
-"""Résumé d'une session téléphone (durée, cadences, trous, horloge) et vidéo de visualisation.
+"""Summary of a phone session (duration, rates, gaps, clock) and viewing video.
 
-Exemples :
+Examples:
     uv run python -m visionaid.apps.session_info data/sessions/20261122-101500_gourde_piece
     uv run python -m visionaid.apps.session_info --all --video
 """
@@ -18,7 +18,7 @@ from visionaid.utils.config import load_config, resolve_path
 
 
 def summarize(s: Session) -> dict:
-    """Statistiques d'une session."""
+    """Statistics of a session."""
     t = np.array([f["t_phone"] for f in s.frames], float)
     dt = np.diff(t) if len(t) > 1 else np.zeros(0)
     gaps = int(np.sum(dt > 3.0 / max(s.fps, 1e-6))) if len(dt) else 0
@@ -53,7 +53,7 @@ def summarize(s: Session) -> dict:
         "frame_image_size": [s.frames[0]["w"], s.frames[0]["h"]] if s.frames else None,
     }
     if c is not None and len(lat):
-        age = lat - c.offset  # réception (PC) − saisie (ramenée à l'horloge PC)
+        age = lat - c.offset  # reception (computer) − capture (brought to the computer clock)
         out["frame_age_ms_p50"] = round(float(np.percentile(age, 50)) * 1e3, 1)
         out["frame_age_ms_p95"] = round(float(np.percentile(age, 95)) * 1e3, 1)
     out["notes"] = s.meta.get("notes", "")
@@ -61,7 +61,7 @@ def summarize(s: Session) -> dict:
 
 
 def write_video(s: Session, path: Path | None = None) -> Path:
-    """`video.mp4` de visualisation (cadence médiane, images non modifiées)."""
+    """Viewing `video.mp4` (median rate, unmodified images)."""
     import cv2
 
     path = path or (s.dir / "video.mp4")
@@ -74,7 +74,7 @@ def write_video(s: Session, path: Path | None = None) -> Path:
         if vw is None:
             size = (img.shape[1], img.shape[0])
             vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), s.fps, size)
-        if (img.shape[1], img.shape[0]) != size:  # résolution changée en cours de session
+        if (img.shape[1], img.shape[0]) != size:  # resolution changed during the session
             img = cv2.resize(img, size)
         vw.write(img)
     if vw is not None:
@@ -90,8 +90,8 @@ def list_sessions(root: str | Path) -> list[Path]:
 def main(argv=None) -> list[dict]:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("sessions", nargs="*")
-    ap.add_argument("--all", action="store_true", help="toutes les sessions de session.dir")
-    ap.add_argument("--video", action="store_true", help="génère video.mp4")
+    ap.add_argument("--all", action="store_true", help="all the sessions in session.dir")
+    ap.add_argument("--video", action="store_true", help="generates video.mp4")
     args = ap.parse_args(argv)
     cfg = load_config()
     dirs = [Path(p) for p in args.sessions]
@@ -106,7 +106,7 @@ def main(argv=None) -> list[dict]:
         out.append(info)
         print(json.dumps(info, indent=2, ensure_ascii=False))
     if not out:
-        print(f"Aucune session dans {resolve_path(cfg.session.dir)}")
+        print(f"No session in {resolve_path(cfg.session.dir)}")
     return out
 
 

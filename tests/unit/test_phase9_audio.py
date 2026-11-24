@@ -17,7 +17,7 @@ def noise(seconds=0.5, seed=0):
 
 
 def xcorr_lag(st, max_lag=60):
-    """Retard (échantillons) du canal droit par rapport au gauche (>0 : la gauche est en avance)."""
+    """Delay (samples) of the right channel relative to the left (>0: the left leads)."""
     left, r = st[2000:, 0], st[2000:, 1]
     lags = np.arange(-max_lag, max_lag + 1)
     cc = [np.dot(left[max_lag:-max_lag], np.roll(r, -k)[max_lag:-max_lag]) for k in lags]
@@ -33,7 +33,7 @@ def test_itd_ild_lateral(side):
     az = side * math.radians(60)
     st = spatialize(noise(), az, FS)
     lag = xcorr_lag(st)
-    itd_theory = woodworth_itd(az) * FS  # >0 : gauche en avance
+    itd_theory = woodworth_itd(az) * FS  # >0: left leads
     assert abs(lag - itd_theory) <= 0.1e-3 * FS + 1
     ild = db(st[:, 0]) - db(st[:, 1])
     assert side * ild > 3.0
@@ -56,7 +56,7 @@ def hf_energy(x, fc=4000):
 def test_front_back_cue():
     m = noise(1.0)
     front = spatialize(m, math.radians(60), FS)
-    back = spatialize(m, math.radians(120), FS)  # même angle latéral, derrière
+    back = spatialize(m, math.radians(120), FS)  # same lateral angle, behind
     assert hf_energy(back.sum(1)) < 0.8 * hf_energy(front.sum(1))
 
 
@@ -87,7 +87,7 @@ def test_no_click_on_azimuth_jump():
         0.0,
         3.0,
     )
-    # un clic = saut d'échantillon plus grand que ceux des deux régimes permanents
+    # a click = sample jump larger than those of the two steady states
     d_steady = max(np.abs(np.diff(s0, axis=0)).max(), np.abs(np.diff(s90, axis=0)).max())
     d_jump = np.abs(np.diff(jump, axis=0)).max()
     assert d_jump <= 1.5 * d_steady

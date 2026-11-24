@@ -1,9 +1,9 @@
-"""Faux téléphone : client Python qui parle exactement le protocole de la page web.
+"""Fake phone: Python client that speaks exactly the protocol of the web page.
 
-Sert aux tests de bout en bout et à la mise au point sans iPhone. Rejoue une vidéo (ou un motif
-synthétique) et une IMU synthétique, avec décalage d'horloge, gigue et pertes configurables.
+Used for end-to-end tests and for tuning without an iPhone. Replays a video (or a synthetic
+pattern) and a synthetic IMU, with configurable clock offset, jitter and losses.
 
-Exemple :
+Example:
     uv run python -m visionaid.phone.fake_phone --url https://localhost:8443/ --duration 10
 """
 
@@ -26,11 +26,11 @@ from visionaid.phone.protocol import PROTOCOL_VERSION, pack_frame
 
 ImuFn = Callable[
     [float], tuple[np.ndarray, np.ndarray]
-]  # t (s depuis le début) -> (gyro deg/s, accel)
+]  # t (s since the start) -> (gyro deg/s, accel)
 
 
 def synthetic_frames(w: int = 480, h: int = 640) -> Iterator[np.ndarray]:
-    """Motif texturé qui défile, avec le numéro d'image incrusté."""
+    """Scrolling textured pattern, with the image number overlaid."""
     rng = np.random.default_rng(0)
     base = (rng.random((h, w * 2)) * 255).astype(np.uint8)
     base = cv2.GaussianBlur(base, (0, 0), 3)
@@ -45,7 +45,7 @@ def synthetic_frames(w: int = 480, h: int = 640) -> Iterator[np.ndarray]:
 
 
 def video_frames(path: str, max_side: int = 640, loop: bool = True) -> Iterator[np.ndarray]:
-    """Images d'une vidéo (rotation appliquée), réduites à `max_side` au plus, en boucle."""
+    """Images of a video (rotation applied), reduced to `max_side` at most, looping."""
     from visionaid.io.sources import VideoFileSource
 
     while True:
@@ -62,7 +62,7 @@ def video_frames(path: str, max_side: int = 640, loop: bool = True) -> Iterator[
 
 
 def still_imu(noise_gyro: float = 0.2, noise_acc: float = 0.05, seed: int = 0) -> ImuFn:
-    """Téléphone vertical immobile : gyro ≈ 0, gravité selon +y (repère W3C)."""
+    """Upright still phone: gyro ≈ 0, gravity along +y (W3C frame)."""
     rng = np.random.default_rng(seed)
 
     def fn(t: float) -> tuple[np.ndarray, np.ndarray]:
@@ -76,11 +76,11 @@ def still_imu(noise_gyro: float = 0.2, noise_acc: float = 0.05, seed: int = 0) -
 def video_gyro_imu(
     path: str, max_side: int = 640, cache_dir: str | None = None
 ) -> tuple[float, ImuFn]:
-    """IMU synthétique cohérente avec une vidéo : gyroscope = rotation visuelle entre images.
+    """Synthetic IMU consistent with a video: gyroscope = visual rotation between images.
 
-    Renvoie (fps de la vidéo, imu_fn). L'accéléromètre est **nul** : la verticale réelle de la
-    vidéo est inconnue, une gravité inventée fausserait le sol ; la VIO garde alors la verticale
-    par le sol (comportement sans gravité) mais profite du gyroscope. Résultat mis en cache.
+    Returns (video fps, imu_fn). The accelerometer is **zero**: the real vertical of the
+    video is unknown, an invented gravity would distort the floor; the VIO then keeps the vertical
+    from the floor (behaviour without gravity) but benefits from the gyroscope. Result cached.
     """
     import hashlib
     from pathlib import Path
@@ -113,11 +113,11 @@ def video_gyro_imu(
         t_mid = 0.5 * (t0 + t1)
         cdir.mkdir(parents=True, exist_ok=True)
         np.savez(cpath, t=t_mid, w=w, fps=fps)
-    R_imu_cam = np.diag([1.0, -1.0, -1.0])  # transposée de R_cam_imu a priori (identique)
+    R_imu_cam = np.diag([1.0, -1.0, -1.0])  # transpose of the prior R_cam_imu (identical)
     duration = float(t_mid[-1]) if len(t_mid) else 1.0
 
     def fn(t: float) -> tuple[np.ndarray, np.ndarray]:
-        tv = t % max(duration, 1e-6)  # la vidéo reboucle
+        tv = t % max(duration, 1e-6)  # the video loops
         wc = (
             np.array([np.interp(tv, t_mid, w[:, k]) for k in range(3)])
             if len(t_mid)
@@ -130,10 +130,10 @@ def video_gyro_imu(
 
 @dataclass
 class FakePhoneStats:
-    """Compteurs côté faux téléphone."""
+    """Counters on the fake phone side."""
 
     sent_frames: int = 0
-    skipped_frames: int = 0  # images non envoyées (attente d'acquittement ou perte simulée)
+    skipped_frames: int = 0  # images not sent (waiting for acknowledgement or simulated loss)
     acks: int = 0
     ack_timeouts: int = 0
     imu_samples: int = 0
@@ -141,12 +141,12 @@ class FakePhoneStats:
     welcome: dict = field(default_factory=dict)
     errors: list = field(default_factory=list)
     send_times: dict = field(default_factory=dict)  # seq -> t_phone d'envoi
-    speech: list = field(default_factory=list)  # phrases reçues (texte)
-    heard: list = field(default_factory=list)  # demandes comprises par le PC
+    speech: list = field(default_factory=list)  # sentences received (text)
+    heard: list = field(default_factory=list)  # requests understood by the computer
 
 
 class FakePhone:
-    """Client WebSocket : hello, images JPEG avec contre-pression, IMU par lots, ping/pong."""
+    """WebSocket client: hello, JPEG images with back-pressure, IMU in batches, ping/pong."""
 
     def __init__(
         self,
@@ -176,13 +176,13 @@ class FakePhone:
         self.imu_hz = imu_hz
         self.imu_batch_ms = imu_batch_ms
         self.jpeg_quality = jpeg_quality
-        self.clock_offset = clock_offset  # horloge téléphone = horloge PC + clock_offset
+        self.clock_offset = clock_offset  # phone clock = computer clock + clock_offset
         self.jitter_s = jitter_s
         self.drop_rate = drop_rate
         self.ack_timeout_s = ack_timeout_s
         self.protocol = protocol
         self.rng = random.Random(seed)
-        self.commands = list(commands or [])  # (délai après connexion en s, phrase dite)
+        self.commands = list(commands or [])  # (delay after connection in s, phrase spoken)
         self.stats = FakePhoneStats()
         self._waiting_ack = False
         self._sent_at = 0.0
@@ -192,11 +192,11 @@ class FakePhone:
         self._t0 = 0.0
 
     def now(self) -> float:
-        """Horloge du faux téléphone (s)."""
+        """Clock of the fake phone (s)."""
         return time.time() + self.clock_offset
 
     async def run(self, duration_s: float, calib_frames: int = 0) -> FakePhoneStats:
-        """Se connecte, envoie pendant `duration_s` secondes, puis se déconnecte (« bye »)."""
+        """Connects, sends for `duration_s` seconds, then disconnects ("bye")."""
         async with aiohttp.ClientSession() as session:
             async with session.ws_connect(self.url, ssl=self.ssl_ctx, heartbeat=5.0) as ws:
                 await self._session(ws, duration_s, calib_frames)
@@ -230,12 +230,12 @@ class FakePhone:
             tasks.append(recv_cmd)
         try:
             res = await asyncio.gather(*tasks, return_exceptions=True)
-            for r in res:  # connexion fermée par le serveur : fin normale, sinon on remonte
+            for r in res:  # connection closed by the server: normal end, otherwise re-raise
                 if isinstance(r, BaseException) and not isinstance(
                     r, (ConnectionResetError, aiohttp.ClientConnectionResetError)
                 ):
                     raise r
-            await asyncio.sleep(0.05)  # laisse arriver un éventuel message d'erreur
+            await asyncio.sleep(0.05)  # let a possible error message arrive
             if not ws.closed:
                 await ws.send_str(json.dumps({"type": "bye"}))
                 await asyncio.sleep(0.05)
@@ -245,7 +245,7 @@ class FakePhone:
             recv.cancel()
 
     async def _command_loop(self, ws) -> None:
-        """Demandes « dites » (texte, comme la reconnaissance de Safari) aux instants prévus."""
+        """Requests "spoken" (text, like Safari recognition) at the scheduled times."""
         for delay, text in self.commands:
             wait = self._t0 + delay - time.time()
             if wait > 0:
@@ -282,7 +282,7 @@ class FakePhone:
         period = 1.0 / self.fps
         img = first
         seq = 0
-        for _ in range(calib_frames):  # vues de calibration en tête de session
+        for _ in range(calib_frames):  # calibration views at the start of the session
             seq += 1
             ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 95])
             await ws.send_bytes(
@@ -292,7 +292,7 @@ class FakePhone:
         while time.time() - self._t0 < duration_s and not ws.closed:
             next_t += period
             await asyncio.sleep(max(0.0, next_t - time.perf_counter()))
-            img = next(self.frames)  # la caméra tourne : l'image avance même si on n'envoie pas
+            img = next(self.frames)  # the camera keeps running: the image moves on even if we do not send
             if self._waiting_ack:
                 if time.perf_counter() - self._sent_at < self.ack_timeout_s:
                     self.stats.skipped_frames += 1
@@ -348,11 +348,11 @@ class FakePhone:
                     }
                 )
             )
-            await asyncio.sleep(0.25 if pid < 5 else 1.0)  # quelques pings rapprochés au début
+            await asyncio.sleep(0.25 if pid < 5 else 1.0)  # a few close pings at the start
 
 
 def run_fake_phone(phone: FakePhone, duration_s: float, calib_frames: int = 0) -> FakePhoneStats:
-    """Version synchrone de `FakePhone.run`."""
+    """Synchronous version of `FakePhone.run`."""
     return asyncio.run(phone.run(duration_s, calib_frames))
 
 
@@ -362,7 +362,7 @@ def main(argv=None) -> None:
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--url", default=None)
-    ap.add_argument("--video", default=None, help="vidéo à rejouer (sinon motif synthétique)")
+    ap.add_argument("--video", default=None, help="video to replay (otherwise synthetic pattern)")
     ap.add_argument("--duration", type=float, default=10.0)
     ap.add_argument("--fps", type=float, default=15.0)
     ap.add_argument("--clock-offset", type=float, default=0.0)

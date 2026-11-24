@@ -1,4 +1,4 @@
-"""Phase 20 : graphe temps réel téléphone → chemin (faux téléphone, modèles stubs)."""
+"""Phase 20: real-time graph phone → path (fake phone, stub models)."""
 
 import socket
 
@@ -27,12 +27,12 @@ def test_fake_phone_to_path_with_reconnection(tmp_path):
             "paths.cache": str(tmp_path / "cache"),
             "phone.certs_dir": str(tmp_path / "certs"),
             "bus.base_port": free_port() + 20,
-            "phone.calib_dir": str(tmp_path / "calib"),  # sans la calibration de l'iPhone réel
+            "phone.calib_dir": str(tmp_path / "calib"),  # without the real iPhone calibration
         }
     )
     raw["_phone_https_port"] = free_port()
     raw["_phone_http_port"] = 0
-    # 12 s connecté, 3 s de coupure, 8 s reconnecté
+    # 12 s connected, 3 s dropout, 8 s reconnected
     s = run(
         raw=raw,
         fake=True,
@@ -42,15 +42,15 @@ def test_fake_phone_to_path_with_reconnection(tmp_path):
         stub_models=True,
     )
     print(s["path"], s["geometry"], s["fake_phone"])
-    assert s["nodes_alive_at_end"] == s["n_nodes"], "un nœud est tombé"
+    assert s["nodes_alive_at_end"] == s["n_nodes"], "a node died"
     assert s["stop_time_s"] < 10
     p = s["path"]
     assert p["first_valid_after_s"] is not None and p["first_valid_after_s"] < 60
     assert p["n_valid_paths"] > 10
-    # coupure : chemin marqué invalide, puis de nouveau valide après la reconnexion
+    # dropout: path marked invalid, then valid again after reconnection
     assert p["n_invalid_paths"] >= 1
     inv = p["invalid_wall_times"]
-    assert any(t > inv[0] + 1 for t in p["valid_wall_times"]), "pas de reprise après coupure"
+    assert any(t > inv[0] + 1 for t in p["valid_wall_times"]), "no recovery after dropout"
     assert p["e2e_capture_to_path_ms_p50"] is not None
     g = s["geometry"]
     assert g["imu_calib"] in ("a priori", "calibration") and g["no_imu_frames"] < g["frames"] * 0.2
@@ -59,7 +59,7 @@ def test_fake_phone_to_path_with_reconnection(tmp_path):
 
 @pytest.mark.timeout(120)
 def test_live_records_session(tmp_path):
-    """`run_live --record` : le direct enregistre aussi la session (rejouable ensuite)."""
+    """`run_live --record`: live mode also records the session (replayable afterwards)."""
     from visionaid.apps.run_live import run
     from visionaid.io.session import load_session
 
@@ -88,8 +88,8 @@ def test_live_records_session(tmp_path):
 
 @pytest.mark.timeout(120)
 def test_rerun_file_mode_writes_recording(tmp_path):
-    """`--rerun file` (et `both`) écrit bien `live_session.rrd` (régression : Rerun 0.23 sans
-    `set_sinks`, l'ancien mode `both` n'écrivait aucun fichier)."""
+    """`--rerun file` (and `both`) does write `live_session.rrd` (regression: Rerun 0.23 without
+    `set_sinks`, the old `both` mode wrote no file)."""
     from visionaid.apps.live_blocks import RerunLiveBlock
 
     raw = load_raw(overrides={"paths.outputs": str(tmp_path)})

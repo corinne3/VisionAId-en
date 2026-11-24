@@ -1,4 +1,4 @@
-"""Outils de mesure de temps et de latence."""
+"""Time and latency measurement tools."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ import numpy as np
 
 
 def now() -> float:
-    """Horloge monotone (s)."""
+    """Monotonic clock (s)."""
     return time.perf_counter()
 
 
 @dataclass
 class LatencyStats:
-    """Accumule des durées par étage et fournit p50/p95."""
+    """Accumulates durations per stage and provides p50/p95."""
 
     samples: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
 
@@ -39,7 +39,7 @@ class LatencyStats:
 
 
 class Timer:
-    """Context manager qui ajoute la durée à un LatencyStats."""
+    """Context manager that adds the duration to a LatencyStats."""
 
     def __init__(self, stats: LatencyStats | None, name: str) -> None:
         self.stats = stats

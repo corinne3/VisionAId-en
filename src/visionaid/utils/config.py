@@ -1,4 +1,4 @@
-"""Chargement de la configuration YAML en dataclasses (immuables par section)."""
+"""Loading of the YAML configuration into dataclasses (immutable per section)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ DEFAULT_CONFIG = ROOT / "config" / "default.yaml"
 
 
 def _to_dataclass(name: str, data: Any) -> Any:
-    """Convertit récursivement un dict en instance de dataclass générée."""
+    """Recursively converts a dict into an instance of a generated dataclass."""
     if not isinstance(data, dict):
         return data
     fields = []
@@ -28,7 +28,7 @@ def _to_dataclass(name: str, data: Any) -> Any:
 
 
 def to_dict(cfg: Any) -> Any:
-    """Inverse de `_to_dataclass`."""
+    """Inverse of `_to_dataclass`."""
     if dataclasses.is_dataclass(cfg):
         return {f.name: to_dict(getattr(cfg, f.name)) for f in dataclasses.fields(cfg)}
     return copy.deepcopy(cfg)
@@ -44,12 +44,12 @@ def _deep_update(base: dict, upd: dict) -> dict:
 
 
 def load_raw(path: str | Path | None = None, overrides: dict | None = None) -> dict:
-    """Charge le YAML brut, applique les surcharges (dict imbriqué ou clés pointées)."""
+    """Loads the raw YAML, applies the overrides (nested dict or dotted keys)."""
     with open(path or DEFAULT_CONFIG) as fh:
         raw = yaml.safe_load(fh) or {}
     _apply_overrides(raw, overrides)
     query = (raw.get("target") or {}).get("query")
-    if query:  # prompt fixe : la fiche cible surcharge la config, les surcharges explicites priment
+    if query:  # fixed prompt: the target card overrides the config, explicit overrides take precedence
         from visionaid.perception.target import apply_target
 
         apply_target(raw, query)
@@ -72,20 +72,20 @@ def _apply_overrides(raw: dict, overrides: dict | None) -> None:
 
 
 def load_config(path: str | Path | None = None, overrides: dict | None = None) -> Any:
-    """Charge la configuration et la retourne sous forme de dataclasses imbriquées."""
+    """Loads the configuration and returns it as nested dataclasses."""
     return _to_dataclass("config", load_raw(path, overrides))
 
 
 def resolve_path(p: str | Path) -> Path:
-    """Chemin relatif à la racine du projet."""
+    """Path relative to the project root."""
     p = Path(p)
     return p if p.is_absolute() else ROOT / p
 
 
 def length_to_m(value, name: str = "longueur") -> float | None:
-    """Longueur saisie par l'utilisateur → mètres. Accepte m, cm ou mm sans unité explicite :
-    > 3 est lu en cm (« 150 » → 1,50 m), > 300 en mm. Les hauteurs humaines ne laissent pas
-    d'ambiguïté."""
+    """Length entered by the user → metres. Accepts m, cm or mm without an explicit unit:
+    > 3 is read as cm ("150" → 1.50 m), > 300 as mm. Human heights leave no
+    ambiguity."""
     if value is None:
         return None
     v = float(value)
@@ -99,6 +99,6 @@ def length_to_m(value, name: str = "longueur") -> float | None:
         import logging
 
         logging.getLogger("visionaid.config").warning(
-            "%s = %g interprétée comme %g m (unité déduite)", name, v, out
+            "%s = %g interpreted as %g m (unit inferred)", name, v, out
         )
     return out

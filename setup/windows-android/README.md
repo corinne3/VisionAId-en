@@ -59,7 +59,7 @@ Quick test: on the PC `python -m http.server 8000`, on the phone `http://<PC IPv
 
 ## 5. Run
 
-Start the PC side first, then press **Démarrer** on the phone page.
+Start the PC side first, then press **Start** on the phone page.
 
 ```powershell
 cd C:\dev\visionaid

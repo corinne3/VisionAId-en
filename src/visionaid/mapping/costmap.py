@@ -1,4 +1,4 @@
-"""Grille d'occupation 2D vue de dessus (log-odds), gonflage et coût de proximité."""
+"""Top-down 2D occupancy grid (log-odds), inflation and proximity cost."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ UNKNOWN, FREE, OCC = -1, 0, 1
 
 
 class OccupancyGrid:
-    """Occupation en log-odds dans le repère monde aligné (z haut, sol à z=0), taille dynamique."""
+    """Log-odds occupancy in the aligned world frame (z up, floor at z=0), dynamic size."""
 
     def __init__(self, cfg_costmap) -> None:
         c = cfg_costmap
@@ -31,10 +31,10 @@ class OccupancyGrid:
         self.max_range = float(c.max_range_m)
         self.slope = float(getattr(c, "obstacle_height_slope", 0.0))
         self.raycast = bool(c.raycast)
-        # obstacles marqués seulement à portée fiable (au-delà, la profondeur monoculaire fait
-        # « remonter » le sol lointain et ferme des passages qui n'existent pas)
+        # obstacles marked only within reliable range (beyond that, monocular depth makes
+        # the distant floor "rise" and closes passages that do not exist)
         self.occ_range = float(getattr(c, "occ_range_m", None) or self.max_range)
-        self.walked = np.zeros(self.L.shape, bool)  # cellules où l'utilisateur est passé
+        self.walked = np.zeros(self.L.shape, bool)  # cells the user has walked through
         self.walk_clearance = float(getattr(c, "carve_radius_m", 0.2) or 0.2)
         self.walked_bias = float(getattr(c, "walked_free_bias", 0.0) or 0.0)
         self.n_updates = 0
@@ -45,7 +45,7 @@ class OccupancyGrid:
         return self.L.shape
 
     def world_to_cell(self, xy: np.ndarray) -> np.ndarray:
-        """(N,2) x,y → (N,2) i (ligne, selon y), j (colonne, selon x)."""
+        """(N,2) x,y → (N,2) i (row, along y), j (column, along x)."""
         ij = np.floor((np.asarray(xy)[..., ::-1] - self.origin[::-1]) / self.res).astype(int)
         return ij
 
@@ -60,7 +60,7 @@ class OccupancyGrid:
         )
 
     def ensure(self, xy: np.ndarray, margin: float = 1.0) -> None:
-        """Agrandit la grille pour contenir les points xy (+ marge)."""
+        """Grows the grid to contain the xy points (+ margin)."""
         if len(xy) == 0:
             return
         lo = xy.min(0) - margin
@@ -87,11 +87,11 @@ class OccupancyGrid:
         self.walked = W
         self.origin = np.array([x0 - dj * self.res, y0 - di * self.res])
 
-    # ---------------------------------------------------------- mise à jour
+    # ---------------------------------------------------------- update
     def update(self, pts_world: np.ndarray, cam_pos: np.ndarray, dt: float = 1.0 / 30.0) -> None:
-        """Intègre un nuage de points (repère monde aligné) vu depuis `cam_pos`.
+        """Integrates a point cloud (aligned world frame) seen from `cam_pos`.
 
-        Oubli : les log-odds décroissent vers 0 (inconnu) avec une demi-vie `decay_half_life_s`.
+        Forgetting: log-odds decay towards 0 (unknown) with a half-life `decay_half_life_s`.
         """
         self.n_updates += 1
         if self.half_life > 0 and dt > 0:
@@ -102,7 +102,7 @@ class OccupancyGrid:
         pts = pts_world[horiz < self.max_range]
         z = pts[:, 2]
         r = horiz[horiz < self.max_range]
-        # tolérance croissante avec la distance (bruit de profondeur, inclinaison du sol estimée)
+        # tolerance growing with distance (depth noise, estimated floor tilt)
         lo = self.band[0] + self.slope * r
         obst = pts[(z >= lo) & (z <= self.band[1]) & (r < self.occ_range)]
         floor = pts[np.abs(z) < self.floor_band + self.slope * r]
@@ -118,7 +118,7 @@ class OccupancyGrid:
                 if len(ray_cells)
                 else free_cells
             )
-        # une cellule touchée par un obstacle n'est pas libérée pendant cette mise à jour
+        # a cell hit by an obstacle is not freed during this update
         if len(occ_cells) and len(free_cells):
             occ_lin = occ_cells[:, 0] * w + occ_cells[:, 1]
             free_lin = free_cells[:, 0] * w + free_cells[:, 1]
@@ -128,16 +128,16 @@ class OccupancyGrid:
         if len(occ_cells):
             self.L[occ_cells[:, 0], occ_cells[:, 1]] += self.l_occ
         if self.walked_bias > 0 and self.walked.any():
-            # cellules parcourues : léger biais « libre » à chaque mise à jour. Le bruit ponctuel
-            # est absorbé ; un vrai obstacle (vu à chaque mise à jour, +l_occ) l'emporte vite
+            # walked cells: slight "free" bias at each update. Occasional noise
+            # is absorbed; a real obstacle (seen at each update, +l_occ) quickly wins
             self.L[self.walked] -= self.walked_bias
         np.clip(self.L, self.l_min, self.l_max, out=self.L)
 
     def carve(self, xy: np.ndarray, radius: float) -> None:
-        """Marque libres, au moment du passage, les cellules à moins de `radius` de l'utilisateur.
+        """Marks as free, at the time of passing, the cells within `radius` of the user.
 
-        La libération n'est pas définitive : un obstacle apparu plus tard au même endroit
-        (chaise déplacée, personne) est de nouveau marqué par les mesures suivantes.
+        Freeing is not permanent: an obstacle appearing later at the same place
+        (moved chair, person) is marked again by the following measurements.
         """
         xy = np.asarray(xy, float)[:2]
         self.ensure(xy[None, :])
@@ -158,7 +158,7 @@ class OccupancyGrid:
         return np.unique(ij[ok], axis=0)
 
     def _ray_cells(self, start: np.ndarray, ends: np.ndarray) -> np.ndarray:
-        """Cellules traversées entre la caméra et chaque point (extrémité exclue)."""
+        """Cells crossed between the camera and each point (end excluded)."""
         if len(ends) == 0:
             return np.zeros((0, 2), int)
         ends_c = np.unique(self.world_to_cell(ends), axis=0)
@@ -170,7 +170,7 @@ class OccupancyGrid:
         valid = s < 1.0 - 1e-9
         pts = start + (ends - start)[:, None, :] * s[..., None]
         cells = self.world_to_cell(pts[valid] if valid.any() else np.zeros((0, 2)))
-        # retire la cellule finale de chaque rayon
+        # remove the final cell of each ray
         return self._cells(self.cell_to_world(cells)) if len(cells) else np.zeros((0, 2), int)
 
     # ---------------------------------------------------------------- lecture
@@ -185,7 +185,7 @@ class OccupancyGrid:
         return s
 
     def cost(self, state: np.ndarray | None = None) -> np.ndarray:
-        """Coût : inf dans le rayon gonflé, décroissance exponentielle au-delà, 0 loin des obstacles."""
+        """Cost: inf within the inflated radius, exponential decay beyond, 0 far from obstacles."""
         s = self.state() if state is None else state
         occ = s == OCC
         if not occ.any():
@@ -195,9 +195,9 @@ class OccupancyGrid:
             -np.maximum(dist - self.radius, 0.0) / max(self.cost_decay, 1e-6)
         )
         c = c.astype(np.float32)
-        # gonflage infranchissable, sauf sur les cellules déjà parcourues qui ne sont pas des
-        # obstacles et restent à plus de `walk_clearance` d'un obstacle (coût élevé mais fini) :
-        # l'utilisateur n'est jamais « bloqué » là où il vient de marcher
+        # untraversable inflation, except on already walked cells that are not
+        # obstacles and stay more than `walk_clearance` from an obstacle (high but finite cost):
+        # the user is never "blocked" where they have just walked
         blocked = dist < self.radius
         if self.walked.shape == blocked.shape:
             ok = self.walked & ~occ & (dist >= self.walk_clearance)

@@ -1,13 +1,13 @@
-"""Export d'une session en trois vidéos MP4 (H.264, lisibles par PowerPoint et Keynote).
+"""Export of a session as three MP4 videos (H.264, readable by PowerPoint and Keynote).
 
-- `camera.mp4`  : image de la caméra, détections (cible en orange), état du guidage ;
-  (les trois vidéos portent la piste du guidage sonore, aussi écrite dans `guidage.wav`)
-- `carte.mp4`   : carte des obstacles vue de dessus, trajectoire, position et cap, chemin, cible ;
-- `monde3d.mp4` : scène 3D (sol quadrillé, obstacles, nuage de points, trajectoire, chemin, cible).
+- `camera.mp4`  : camera image, detections (target in orange), guidance state;
+  (the three videos carry the sound guidance track, also written to `guidage.wav`)
+- `carte.mp4`   : top-down obstacle map, trajectory, position and heading, path, target;
+- `monde3d.mp4` : 3D scene (grid floor, obstacles, point cloud, trajectory, path, target).
 
-La session est rejouée dans le pipeline offline (mêmes modules que le direct), image par image.
+The session is replayed in the offline pipeline (same modules as live), frame by frame.
 
-Exemple :
+Example:
     uv run python -m visionaid.apps.export_videos data/sessions/20261121-182903_gourde_direct2
 """
 
@@ -26,28 +26,28 @@ from visionaid.utils.logging import get_logger
 
 log = get_logger("export")
 
-# couleurs (BGR pour OpenCV) — mêmes rôles que la vue Rerun
+# colours (BGR for OpenCV) — same roles as in the Rerun view
 C_USER = (214, 120, 42)  # bleu #2a78d6
 C_TARGET = (52, 104, 235)  # orange #eb6834
 C_PATH = (40, 170, 40)  # vert
 C_OCC = (40, 40, 170)  # rouge sombre
-C_INFL = (210, 190, 235)  # rose clair : marge de sécurité
+C_INFL = (210, 190, 235)  # light pink: safety margin
 C_UNKNOWN = (128, 128, 128)
 STATE_FR = {
-    "SEARCHING": "RECHERCHE",
-    "NAVIGATING": "NAVIGATION",
-    "APPROACHING": "APPROCHE",
-    "ARRIVED": "ARRIVÉ",
-    "OBSTACLE_ALERT": "ALERTE OBSTACLE",
-    "TRACKING_LOST": "REPÉRAGE PERDU",
+    "SEARCHING": "SEARCHING",
+    "NAVIGATING": "NAVIGATING",
+    "APPROACHING": "APPROACHING",
+    "ARRIVED": "ARRIVED",
+    "OBSTACLE_ALERT": "OBSTACLE ALERT",
+    "TRACKING_LOST": "TRACKING LOST",
 }
 
 
 def replay(session_dir, cfg=None, cloud_every: int = 2, with_audio: bool = False):
-    """Rejoue la session ; renvoie, par image, ce qu'il faut pour les trois vidéos, et la cadence.
+    """Replays the session; returns, per frame, what is needed for the three videos, and the rate.
 
-    Avec `with_audio`, renvoie aussi la piste stéréo du guidage sonore (même directeur sonore que
-    le téléphone : `audio.director`) et sa fréquence d'échantillonnage."""
+    With `with_audio`, also returns the stereo track of the sound guidance (same sound director as
+    the phone: `audio.director`) and its sample rate."""
     from visionaid.io.session import SessionImu, SessionSource, load_session
     from visionaid.mapping.geometry import backproject, transform
     from visionaid.perception.depth import video_depth_estimator
@@ -113,7 +113,7 @@ def replay(session_dir, cfg=None, cloud_every: int = 2, with_audio: bool = False
     return out, float(src.fps), stereo, ar
 
 
-# ---------------------------------------------------------------------------- caméra
+# ---------------------------------------------------------------------------- camera
 def render_camera(fr: dict, height: int = 720) -> np.ndarray:
     img = fr["image"].copy()
     if fr["target_mask"] is not None:
@@ -126,7 +126,7 @@ def render_camera(fr: dict, height: int = 720) -> np.ndarray:
             if i == fr["target_idx"]:
                 col, lab, th = C_TARGET, "GOURDE", 3
             elif i == fr["cand_idx"]:
-                col, lab, th = C_TARGET, "gourde probable", 2
+                col, lab, th = C_TARGET, "probable bottle", 2
             else:
                 col, lab, th = (200, 200, 200), "", 1
             cv2.rectangle(img, (x0, y0), (x1, y1), col, th)
@@ -142,7 +142,7 @@ def render_camera(fr: dict, height: int = 720) -> np.ndarray:
 
 
 def _ascii(t: str) -> str:
-    """OpenCV n'affiche pas les accents : É → E, etc."""
+    """OpenCV does not display accents: É → E, etc."""
     import unicodedata
 
     return unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode()
@@ -159,9 +159,9 @@ def _banner(img: np.ndarray, fr: dict) -> None:
     )
 
 
-# ---------------------------------------------------------------------------- carte 2D
+# ---------------------------------------------------------------------------- 2D map
 def map_extent(frames: list[dict], margin: float = 0.6) -> tuple[float, float, float, float]:
-    """Emprise (x0, x1, y0, y1) des zones connues et parcourues, sur toute la session."""
+    """Extent (x0, x1, y0, y1) of the known and walked areas, over the whole session."""
     xs, ys = [], []
     for fr in frames:
         if fr["T"] is not None:
@@ -180,13 +180,13 @@ def map_extent(frames: list[dict], margin: float = 0.6) -> tuple[float, float, f
     if not xs:
         return -3, 3, -3, 3
     x0, x1, y0, y1 = min(xs) - margin, max(xs) + margin, min(ys) - margin, max(ys) + margin
-    side = max(x1 - x0, y1 - y0)  # carré : même échelle en x et y
+    side = max(x1 - x0, y1 - y0)  # square: same scale in x and y
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     return cx - side / 2, cx + side / 2, cy - side / 2, cy + side / 2
 
 
 def activity_extent(frames: list[dict], margin: float = 2.0) -> tuple[float, float, float, float]:
-    """Emprise resserrée pour la 3D : trajectoire et cible (+ marge), pas toute la carte."""
+    """Tighter extent for 3D: trajectory and target (+ margin), not the whole map."""
     xs = [fr["T"][0, 3] for fr in frames if fr["T"] is not None]
     ys = [fr["T"][1, 3] for fr in frames if fr["T"] is not None]
     for fr in frames:
@@ -209,7 +209,7 @@ def render_map(fr: dict, traj: np.ndarray, ext, size: int = 720) -> np.ndarray:
     if fr["cm"] is not None:
         st, blocked, origin, res = fr["cm"]
         h, w = st.shape
-        # rééchantillonnage de la grille dans l'emprise fixe
+        # resampling of the grid within the fixed extent
         gx = x0 + (np.arange(size) + 0.5) / sc
         gy = y1 - (np.arange(size) + 0.5) / sc
         jj = np.floor((gx - origin[0]) / res).astype(int)
@@ -250,7 +250,7 @@ def render_map(fr: dict, traj: np.ndarray, ext, size: int = 720) -> np.ndarray:
         cv2.arrowedLine(img, p, tip, C_USER, 4, cv2.LINE_AA, tipLength=0.35)
         cv2.circle(img, p, 9, C_USER, -1, cv2.LINE_AA)
     _banner(img, fr)
-    # légende
+    # legend
     y = size - 16
     for col, lab in (
         (C_USER, "vous"),
@@ -266,9 +266,9 @@ def render_map(fr: dict, traj: np.ndarray, ext, size: int = 720) -> np.ndarray:
     return img
 
 
-# ---------------------------------------------------------------------------- monde 3D
+# ---------------------------------------------------------------------------- 3D world
 class World3DRenderer:
-    """Rendu matplotlib (hors écran) d'une vue 3D fixe, image par image."""
+    """Matplotlib rendering (off screen) of a fixed 3D view, frame by frame."""
 
     def __init__(self, ext, size=(1280, 720), elev: float = 38.0, azim: float = -125.0) -> None:
         import matplotlib
@@ -359,9 +359,9 @@ class World3DRenderer:
         return cv2.cvtColor(buf, cv2.COLOR_RGB2BGR)
 
 
-# ---------------------------------------------------------------------------- vidéo
+# ---------------------------------------------------------------------------- video
 class Mp4Writer:
-    """Écrit des images en MP4 H.264 (yuv420p) via ffmpeg, repli OpenCV sinon."""
+    """Writes images to MP4 H.264 (yuv420p) via ffmpeg, OpenCV fallback otherwise."""
 
     def __init__(self, path: Path, fps: float) -> None:
         self.path = Path(path)
@@ -421,10 +421,10 @@ def export(session_dir, out_dir, which=("camera", "carte", "monde3d")) -> dict[s
         if r3d is not None:
             writers["monde3d"].write(r3d.render(fr, tr))
         if k % 50 == 0:
-            log.info("Export : image %d / %d", k, len(frames))
+            log.info("Export: frame %d / %d", k, len(frames))
     for w in writers.values():
         w.close()
-    # guidage sonore : piste WAV, puis ajoutée à chaque vidéo (le son de la chaîne complète)
+    # sound guidance: WAV track, then added to each video (the sound of the full chain)
     wav = out / "guidage.wav"
     ar.write_wav(wav, stereo)
     res = {}
@@ -453,7 +453,7 @@ def main(argv=None) -> dict:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("session")
     ap.add_argument(
-        "--out", default=None, help="dossier de sortie (défaut : outputs/videos/<session>)"
+        "--out", default=None, help="output folder (default: outputs/videos/<session>)"
     )
     ap.add_argument("--only", nargs="+", choices=["camera", "carte", "monde3d"], default=None)
     args = ap.parse_args(argv)

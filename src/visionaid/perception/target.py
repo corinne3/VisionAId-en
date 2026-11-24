@@ -1,8 +1,8 @@
-"""Prompt fixe → fiche cible (`config/targets/<nom>.yaml`), sans modèle de langage.
+"""Fixed prompt → target card (`config/targets/<name>.yaml`), without a language model.
 
-La phrase est normalisée (minuscules, accents, ponctuation, mots vides) puis comparée aux phrases
-déclenchantes de chaque fiche : égalité exacte d'abord, puis inclusion du nom de l'objet. La fiche
-retenue surcharge la config (prompts de détection, photos de référence, modèle de couleur, seuil).
+The phrase is normalised (lower case, accents, punctuation, stop words) then compared with the trigger
+phrases of each card: exact match first, then inclusion of the object name. The chosen
+card overrides the config (detection prompts, reference photos, colour model, threshold).
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ STOPWORDS = {
 
 
 class UnknownTarget(ValueError):
-    """Aucune fiche ne correspond à la phrase."""
+    """No card matches the phrase."""
 
 
 @dataclass
 class TargetSheet:
-    """Fiche cible chargée depuis YAML."""
+    """Target card loaded from YAML."""
 
     name: str
     label: str
@@ -37,19 +37,19 @@ class TargetSheet:
     overrides: dict
     path: Path
     keys: set[str] = field(default_factory=set)
-    spoken: str = ""  # nom prononcé dans les annonces (« la gourde »)
+    spoken: str = ""  # name spoken in the announcements ("la gourde")
     plural: bool = False
 
 
 def normalize(text: str) -> str:
-    """Minuscules, sans accents ni ponctuation, espaces simples."""
+    """Lower case, without accents or punctuation, single spaces."""
     t = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
     t = re.sub(r"[^a-z0-9]+", " ", t)
     return " ".join(t.split())
 
 
 def content_words(text: str) -> tuple[str, ...]:
-    """Mots porteurs de sens (sans mots vides), au singulier approximatif."""
+    """Meaningful words (without stop words), approximately singular."""
     out = []
     for w in normalize(text).split():
         if w in STOPWORDS:
@@ -61,7 +61,7 @@ def content_words(text: str) -> tuple[str, ...]:
 
 
 def spoken_from_label(label: str) -> str:
-    """« ma gourde » → « la gourde », « mes clés » → « les clés » (nom prononcé par défaut)."""
+    """« ma gourde » → « la gourde », « mes clés » → « les clés » (default spoken name)."""
     w = label.strip().split(" ", 1)
     art = {"ma": "la", "mon": "le", "mes": "les", "ta": "la", "ton": "le", "tes": "les"}
     if len(w) == 2 and w[0].lower() in art:
@@ -70,7 +70,7 @@ def spoken_from_label(label: str) -> str:
 
 
 def load_sheets(directory: str | Path | None = None) -> list[TargetSheet]:
-    """Toutes les fiches du dossier, triées par nom."""
+    """All the cards in the folder, sorted by name."""
     d = resolve_path(directory or "config/targets")
     sheets = []
     for p in sorted(Path(d).glob("*.yaml")):
@@ -96,7 +96,7 @@ def load_sheets(directory: str | Path | None = None) -> list[TargetSheet]:
 
 
 def resolve_target(query: str, directory: str | Path | None = None) -> TargetSheet:
-    """Fiche correspondant à la phrase ; `UnknownTarget` (avec la liste des cibles) sinon."""
+    """Card matching the phrase; `UnknownTarget` (with the list of targets) otherwise."""
     sheets = load_sheets(directory)
     key = " ".join(content_words(query))
     if key:
@@ -107,12 +107,12 @@ def resolve_target(query: str, directory: str | Path | None = None) -> TargetShe
         partial = [s for s in sheets if any(set(k.split()) <= words for k in s.keys)]
         if len(partial) == 1:
             return partial[0]
-    known = ", ".join(f"« {s.label} »" for s in sheets) or "aucune"
-    raise UnknownTarget(f"cible inconnue pour « {query} ». Cibles disponibles : {known}.")
+    known = ", ".join(f"« {s.label} »" for s in sheets) or "none"
+    raise UnknownTarget(f"unknown target for « {query} ». Available targets: {known}.")
 
 
 def apply_target(raw: dict, query: str | None) -> dict:
-    """Applique la fiche correspondant à `query` (ou `raw['target']['query']`) à une config brute."""
+    """Applies the card matching `query` (or `raw['target']['query']`) to a raw config."""
     q = query if query is not None else (raw.get("target") or {}).get("query")
     if not q:
         return raw
@@ -128,7 +128,7 @@ def apply_target(raw: dict, query: str | None) -> dict:
 
 
 def load_config_for_target(query: str | None, path=None, overrides: dict | None = None):
-    """Config avec la fiche cible appliquée (les `overrides` explicites priment sur la fiche)."""
+    """Config with the target card applied (explicit `overrides` take precedence over the card)."""
     from visionaid.utils.config import load_config
 
     ov = dict(overrides or {})
@@ -142,10 +142,10 @@ STOP_PHRASES = ("c est bon", "j ai trouve", "laisse tomber")
 
 
 def parse_command(texts, directory: str | Path | None = None) -> tuple[str, TargetSheet | None]:
-    """Phrase(s) reconnue(s) → (action, fiche). Action : `search`, `stop` ou `unknown`.
+    """Recognised phrase(s) → (action, card). Action: `search`, `stop` or `unknown`.
 
-    Plusieurs transcriptions possibles (alternatives de la reconnaissance vocale) : la première
-    qui désigne une fiche l'emporte. « Stop », « arrête », « j'ai trouvé » : fin de la recherche.
+    Several possible transcriptions (speech recognition alternatives): the first one
+    that designates a card wins. « Stop », « arrête », « j'ai trouvé » (stop, I found it): end of the search.
     """
     if isinstance(texts, str):
         texts = [texts]
@@ -163,23 +163,23 @@ def parse_command(texts, directory: str | Path | None = None) -> tuple[str, Targ
 
 
 def target_raw(raw: dict, query: str) -> dict:
-    """Config brute pour la cible `query`, appliquée sur la config de base (sans fiche).
+    """Raw config for the target `query`, applied on the base config (without a card).
 
-    `raw["_raw_base"]` (posé par run_live) est la config sans fiche cible : on évite qu'une
-    surcharge de la fiche précédente (seuil de détection des clés…) ne reste en place.
+    `raw["_raw_base"]` (set by run_live) is the config without a target card: this avoids an
+    override of the previous card (key detection threshold…) staying in place.
     """
     import copy
 
     base = raw.get("_raw_base") or raw
     out = copy.deepcopy({k: v for k, v in base.items() if k != "_raw_base"})
-    for k, v in raw.items():  # réglages d'exécution (« _phone », « _stub_models »…)
+    for k, v in raw.items():  # runtime settings ("_phone", "_stub_models"…)
         if k.startswith("_") and k != "_raw_base":
             out[k] = v
     return apply_target(out, query)
 
 
 def sheet_for_config(raw: dict) -> TargetSheet | None:
-    """Fiche de la cible configurée (prompt fixe), ou None."""
+    """Card of the configured target (fixed prompt), or None."""
     q = (raw.get("target") or {}).get("query")
     if not q:
         return None
@@ -190,7 +190,7 @@ def sheet_for_config(raw: dict) -> TargetSheet | None:
 
 
 def known_targets_phrase(directory: str | Path | None = None) -> str:
-    """« ta gourde ou tes clés » : ce que l'utilisateur peut demander."""
+    """« ta gourde ou tes clés » (your bottle or your keys): what the user can ask for."""
     art = {"ma": "ta", "mon": "ton", "mes": "tes"}
     names = []
     for s in load_sheets(directory):

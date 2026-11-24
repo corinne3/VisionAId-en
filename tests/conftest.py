@@ -1,4 +1,4 @@
-"""Fixtures communes : chemins de données, vidéo synthétique, config."""
+"""Shared fixtures: data paths, synthetic video, config."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def cfg():
 @pytest.fixture(scope="session")
 def video_path() -> Path:
     if not VIDEO.exists():
-        pytest.skip(f"Vidéo absente : {VIDEO}")
+        pytest.skip(f"Video missing: {VIDEO}")
     return VIDEO
 
 
@@ -34,19 +34,19 @@ def video_path() -> Path:
 def ref_images() -> list[np.ndarray]:
     paths = ref_paths()
     if not paths:
-        pytest.skip(f"Aucune photo de référence dans {REF_DIR}")
+        pytest.skip(f"No reference photo in {REF_DIR}")
     return [cv2.imread(str(p)) for p in paths]
 
 
 def make_synthetic_video(
     path: Path, seconds: float = 3.0, fps: int = 30, w: int = 320, h: int = 240
 ) -> int:
-    """Écrit une vidéo synthétique : un carré qui se déplace + numéro de frame en motif."""
+    """Writes a synthetic video: a moving square + frame number as a pattern."""
     vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
     n = int(round(seconds * fps))
     for i in range(n):
         img = np.zeros((h, w, 3), np.uint8)
-        img[:, : w // 4] = (0, 0, 255)  # bande rouge à gauche (repère de rotation)
+        img[:, : w // 4] = (0, 0, 255)  # red band on the left (rotation marker)
         x = int(i * (w - 40) / max(n - 1, 1))
         cv2.rectangle(img, (x, h // 2 - 20), (x + 40, h // 2 + 20), (255, 255, 255), -1)
         vw.write(img)
@@ -63,9 +63,9 @@ def synthetic_video(tmp_path: Path) -> tuple[Path, int]:
 
 @pytest.fixture(scope="session")
 def reid_bundle():
-    """(reid, ref_crops, detector) avec les vrais modèles (tests slow)."""
+    """(reid, ref_crops, detector) with the real models (slow tests)."""
     if not ref_paths():
-        pytest.skip("Aucune photo de référence")
+        pytest.skip("No reference photo")
     from visionaid.apps.calibrate_reid import build_reid
 
     return build_reid(load_config())
@@ -73,9 +73,9 @@ def reid_bundle():
 
 @pytest.fixture(scope="session")
 def video_perception(video_path):
-    """Perception complète de la vidéo (mise en cache disque)."""
+    """Full perception of the video (cached on disk)."""
     from visionaid.perception.pipeline import run_video_perception
 
     if not ref_paths():
-        pytest.skip("Aucune photo de référence")
+        pytest.skip("No reference photo")
     return run_video_perception(load_config())

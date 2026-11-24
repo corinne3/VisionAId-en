@@ -42,11 +42,11 @@ def test_rotation_override(synthetic_video):
     path, _ = synthetic_video
     f = VideoFileSource(path, width=None, rotation_override=90).read()
     assert f.image.shape == (320, 240, 3)
-    # bande rouge à gauche -> en haut après rotation horaire
+    # red band on the left -> at the top after clockwise rotation
     assert f.image[:10, :, 2].mean() > 200 and f.image[-10:, :, 2].mean() < 50
 
 
-@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg absent")
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg missing")
 def test_rotation_from_metadata(synthetic_video, tmp_path):
     path, _ = synthetic_video
     out = tmp_path / "rot.mp4"
@@ -94,9 +94,9 @@ def test_replay_skips_when_consumer_slow(synthetic_video):
     lags = []
     while (f := src.read()) is not None:
         lags.append((time.perf_counter() - t0) - f.t)
-        time.sleep(0.1)  # consommateur à 10 Hz pour une source à 30 Hz
+        time.sleep(0.1)  # consumer at 10 Hz for a source at 30 Hz
     assert src.skipped > n / 2
-    assert max(lags) < 0.15  # pas d'accumulation de retard
+    assert max(lags) < 0.15  # no delay build-up
 
 
 def test_list_source():

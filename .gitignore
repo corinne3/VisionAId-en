@@ -10,7 +10,7 @@ wheels/
 .venv
 .vscode
 
-# Données, sorties, caches, poids
+# Data, outputs, caches, weights
 /data/
 .cache/
 *.pt
@@ -23,7 +23,7 @@ wheels/
 
 .certs/
 
-# Sorties régénérées à chaque lancement : peuvent contenir des images de l'utilisateur
-# (sessions iPhone, vidéo de l'appartement) ; jamais dans le dépôt public
+# Outputs regenerated at each run: may contain images of the user
+# (iPhone sessions, apartment video); never in the public repository
 outputs/
 *.rrd

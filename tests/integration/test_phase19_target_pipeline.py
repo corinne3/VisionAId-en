@@ -1,4 +1,4 @@
-"""Phase 19 (intégration) : pipeline complet avec la fiche « clés », sans photo de référence (stubs)."""
+"""Phase 19 (integration): full pipeline with the "keys" card, without a reference photo (stubs)."""
 
 import pytest
 
@@ -31,7 +31,7 @@ def test_keys_text_only_pipeline(tmp_path):
             "video.width": sp.W,
             "paths.cache": str(tmp_path / "cache"),
             "depth.scale_factor": 1.0,
-            "phone.calib_dir": str(tmp_path / "calib"),  # sans la calibration de l'iPhone réel
+            "phone.calib_dir": str(tmp_path / "calib"),  # without the real iPhone calibration
         },
     )
     K = from_hfov(sp.W, sp.H, cfg.intrinsics.hfov_deg).K

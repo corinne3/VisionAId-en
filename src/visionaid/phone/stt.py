@@ -1,9 +1,9 @@
-"""Reconnaissance vocale sur le PC (Whisper, `transformers`) des demandes enregistrées par le
-téléphone (« je cherche ma gourde »).
+"""Speech recognition on the computer (Whisper, `transformers`) of the requests recorded by the
+phone (« je cherche ma gourde »).
 
-Le téléphone enregistre quelques secondes (MediaRecorder : audio/mp4 sur iPhone, audio/webm
-ailleurs) et envoie le fichier ; ffmpeg le décode (via `transformers`). Le modèle est chargé en
-arrière-plan au démarrage du direct (téléchargé une seule fois, ~1 Go pour whisper-small).
+The phone records a few seconds (MediaRecorder: audio/mp4 on iPhone, audio/webm
+elsewhere) and sends the file; ffmpeg decodes it (through `transformers`). The model is loaded in
+the background when live mode starts (downloaded only once, ~1 GB for whisper-small).
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ SUFFIX = {
 
 
 class WhisperSTT:
-    """Transcription de courtes phrases, modèle chargé une fois (fil d'arrière-plan)."""
+    """Transcription of short sentences, model loaded once (background thread)."""
 
     def __init__(self, model: str = "openai/whisper-small", language: str = "fr") -> None:
         self.model_name = model
@@ -51,15 +51,15 @@ class WhisperSTT:
             dev = "mps" if torch.backends.mps.is_available() else "cpu"
             t0 = time.time()
             self.pipe = pipeline("automatic-speech-recognition", model=self.model_name, device=dev)
-            log.info("Whisper prêt (%s sur %s, %.0f s)", self.model_name, dev, time.time() - t0)
-        except Exception as e:  # noqa: BLE001 - modèle absent, pas de réseau…
+            log.info("Whisper ready (%s on %s, %.0f s)", self.model_name, dev, time.time() - t0)
+        except Exception as e:  # noqa: BLE001 - model missing, no network…
             self.error = repr(e)[:300]
-            log.error("Whisper indisponible : %s", self.error)
+            log.error("Whisper unavailable: %s", self.error)
         finally:
             self._ready.set()
 
     def transcribe(self, audio: bytes, mime: str = "audio/mp4", timeout: float = 180.0) -> str:
-        """Fichier audio (octets) → texte ; chaîne vide si échec."""
+        """Audio file (bytes) → text; empty string on failure."""
         if self.pipe is None and not self._ready.is_set():
             if not any(t.name == "whisper-load" for t in threading.enumerate()):
                 self.preload()
@@ -77,8 +77,8 @@ class WhisperSTT:
                     r = self.pipe(
                         str(f), generate_kwargs={"language": self.language, "task": "transcribe"}
                     )
-            except Exception as e:  # noqa: BLE001 - fichier illisible
-                log.warning("Transcription impossible : %s", e)
+            except Exception as e:  # noqa: BLE001 - unreadable file
+                log.warning("Transcription impossible: %s", e)
                 return ""
             self.times.append(time.time() - t0)
         return str(r.get("text", "")).strip()

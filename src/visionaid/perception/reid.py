@@ -1,4 +1,4 @@
-"""Ré-identification de la cible : embedding (DINOv2) + score couleur (gris / orange)."""
+"""Target re-identification: embedding (DINOv2) + colour score (grey / orange)."""
 
 from __future__ import annotations
 
@@ -16,17 +16,17 @@ from visionaid.utils.logging import get_logger
 
 log = get_logger("reid")
 
-BG_COLOR = (104, 116, 124)  # BGR moyen ImageNet, fond neutre des crops masqués
+BG_COLOR = (104, 116, 124)  # ImageNet mean BGR, neutral background of the masked crops
 
 
 class Embedder(Protocol):
-    """Contrat : liste de crops BGR → embeddings normalisés (N, D)."""
+    """Contract: list of BGR crops → normalised embeddings (N, D)."""
 
     def embed(self, crops: list[np.ndarray]) -> np.ndarray: ...
 
 
 class DinoEmbedder:
-    """DINOv2 (transformers) : token CLS + moyenne des patchs, normalisés."""
+    """DINOv2 (transformers): CLS token + mean of the patches, normalised."""
 
     def __init__(self, model_name: str, device: str, size: int = 224) -> None:
         import torch
@@ -62,7 +62,7 @@ class DinoEmbedder:
 
 
 class ClipEmbedder:
-    """Repli : encodeur image CLIP (transformers)."""
+    """Fallback: CLIP image encoder (transformers)."""
 
     def __init__(self, model_name: str, device: str, size: int = 224) -> None:
         import torch
@@ -91,7 +91,7 @@ class ClipEmbedder:
 
 
 class StubEmbedder:
-    """Embedder factice déterministe : histogramme de couleurs grossier."""
+    """Deterministic fake embedder: coarse colour histogram."""
 
     def embed(self, crops: list[np.ndarray]) -> np.ndarray:
         out = []
@@ -102,7 +102,7 @@ class StubEmbedder:
 
 
 def make_embedder(cfg) -> tuple[Embedder, str]:
-    """Construit l'embedder selon la config, avec repli DINOv2 → CLIP → stub."""
+    """Builds the embedder according to the config, with fallback DINOv2 → CLIP → stub."""
     rcfg = cfg.reid
     device = select_device(cfg.device)
     order = ["dinov2", "clip"] if rcfg.backend == "auto" else [rcfg.backend]
@@ -115,15 +115,15 @@ def make_embedder(cfg) -> tuple[Embedder, str]:
             if b == "stub":
                 return StubEmbedder(), b
         except Exception as e:  # noqa: BLE001
-            log.warning("Embedder %s indisponible : %r", b, e)
-    log.warning("Repli sur l'embedder stub")
+            log.warning("Embedder %s unavailable: %r", b, e)
+    log.warning("Falling back to the stub embedder")
     return StubEmbedder(), "stub"
 
 
 def masked_crop(
     image: np.ndarray, box: np.ndarray, mask: np.ndarray | None, margin: float = 0.05
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Crop de la boîte (marge relative) avec fond neutre hors masque. Retourne (crop, masque crop)."""
+    """Crop of the box (relative margin) with a neutral background outside the mask. Returns (crop, crop mask)."""
     h, w = image.shape[:2]
     x0, y0, x1, y1 = [float(v) for v in box]
     mx, my = (x1 - x0) * margin, (y1 - y0) * margin
@@ -145,7 +145,7 @@ def masked_crop(
 
 @dataclass
 class ColorModel:
-    """Paramètres HSV des couleurs de la cible."""
+    """HSV parameters of the target colours."""
 
     orange_h: tuple[int, int]
     orange_s_min: int
@@ -168,7 +168,7 @@ class ColorModel:
         )
 
     def fractions(self, crop: np.ndarray, mask: np.ndarray) -> tuple[float, float]:
-        """Fractions de pixels orange et gris dans le masque."""
+        """Fractions of orange and grey pixels in the mask."""
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
         hh, ss, vv = hsv[..., 0][mask], hsv[..., 1][mask], hsv[..., 2][mask]
         n = max(int(mask.sum()), 1)
@@ -182,7 +182,7 @@ class ColorModel:
         return float(orange.sum()) / n, float(gray.sum()) / n
 
     def proportion_score(self, crop: np.ndarray, mask: np.ndarray) -> float:
-        """Score ∈ [0,1] : présence conjointe d'orange et de gris."""
+        """Score ∈ [0,1]: joint presence of orange and grey."""
         fo, fg = self.fractions(crop, mask)
         so = min(fo / self.orange_frac_ref, 1.0)
         sg = min(fg / self.gray_frac_ref, 1.0)
@@ -190,20 +190,20 @@ class ColorModel:
 
 
 def make_color_model(rcfg) -> ColorModel | None:
-    """Modèle de couleur de la fiche cible (`reid.color_model`) ; None si `none`."""
+    """Colour model of the target card (`reid.color_model`); None if `none`."""
     kind = str(getattr(rcfg, "color_model", "orange_gray") or "orange_gray")
     if kind == "none":
         return None
     if kind != "orange_gray":
-        raise ValueError(f"modèle de couleur inconnu : {kind}")
+        raise ValueError(f"unknown colour model: {kind}")
     return ColorModel.from_cfg(rcfg)
 
 
 class TextOnlyReID:
-    """Cible sans photo de référence : décision sur la seule confiance du détecteur (prompt texte).
+    """Target without a reference photo: decision on the detector confidence alone (text prompt).
 
-    Le score d'une détection est sa confiance ; le seuil est `reid.textonly_conf`. Limite assumée :
-    pas de distinction entre deux objets de la même catégorie (consigné dans le rapport).
+    The score of a detection is its confidence; the threshold is `reid.textonly_conf`. Accepted limit:
+    no distinction between two objects of the same category (recorded in the report).
     """
 
     text_only = True
@@ -220,19 +220,19 @@ class TextOnlyReID:
 
 
 def hsv_hist(crop: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    """Histogramme H-S normalisé (16×8) sous le masque."""
+    """Normalised H-S histogram (16×8) under the mask."""
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
     h = cv2.calcHist([hsv], [0, 1], mask.astype(np.uint8), [16, 8], [0, 180, 0, 256]).ravel()
     return h / max(h.sum(), 1e-9)
 
 
 def hist_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """1 − distance de Bhattacharyya."""
+    """1 − Bhattacharyya distance."""
     return float(np.sum(np.sqrt(a * b)))
 
 
 def augment(img: np.ndarray, rng: np.random.Generator, occlude: bool = True) -> np.ndarray:
-    """Augmentation : rotation, échelle, flou, luminosité, recadrage partiel, occultation 30 %."""
+    """Augmentation: rotation, scale, blur, brightness, partial crop, 30% occlusion."""
     h, w = img.shape[:2]
     ang = rng.uniform(-15, 15)
     sc = rng.uniform(0.6, 1.15)
@@ -247,7 +247,7 @@ def augment(img: np.ndarray, rng: np.random.Generator, occlude: bool = True) -> 
         fy0, fy1 = rng.uniform(0, 0.15), rng.uniform(0.85, 1.0)
         fx0, fx1 = rng.uniform(0, 0.15), rng.uniform(0.85, 1.0)
         out = out[int(fy0 * h) : int(fy1 * h), int(fx0 * w) : int(fx1 * w)]
-    if occlude and rng.random() < 0.5:  # occultation d'environ 30 % de la surface
+    if occlude and rng.random() < 0.5:  # occlusion of about 30% of the area
         hh, ww = out.shape[:2]
         oh, ow = int(hh * rng.uniform(0.4, 0.6)), int(ww * rng.uniform(0.5, 0.7))
         oh = min(oh, hh)
@@ -259,14 +259,14 @@ def augment(img: np.ndarray, rng: np.random.Generator, occlude: bool = True) -> 
 
 
 def hue_shift(img: np.ndarray, shift: int) -> np.ndarray:
-    """Décale la teinte (OpenCV H ∈ [0,180))."""
+    """Shifts the hue (OpenCV H ∈ [0,180))."""
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     hsv[..., 0] = ((hsv[..., 0].astype(int) + shift) % 180).astype(np.uint8)
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 
 class TargetReID:
-    """Score de ré-identification d'un crop vis-à-vis de la galerie de référence."""
+    """Re-identification score of a crop against the reference gallery."""
 
     def __init__(self, cfg, embedder: Embedder | None = None, backend: str | None = None) -> None:
         self.cfg = cfg
@@ -275,10 +275,10 @@ class TargetReID:
             embedder, backend = make_embedder(cfg)
         self.embedder = embedder
         self.backend = backend or type(embedder).__name__
-        self.colors = make_color_model(r)  # None : cible sans couleur distinctive
+        self.colors = make_color_model(r)  # None: target without a distinctive colour
         self.w_embed = float(r.w_embed)
         self.w_color = float(r.w_color) if self.colors is not None else 0.0
-        self.last_color: np.ndarray | None = None  # part couleur du dernier appel
+        self.last_color: np.ndarray | None = None  # colour share of the last call
         self.gallery: np.ndarray | None = None
         self.gallery_hists: list[np.ndarray] = []
         self.ref_crops: list[tuple[np.ndarray, np.ndarray]] = []
@@ -288,7 +288,7 @@ class TargetReID:
     def build_gallery(
         self, crops: list[tuple[np.ndarray, np.ndarray]], n_aug: int | None = None, seed: int = 0
     ) -> None:
-        """Galerie = crops de référence + augmentations (sans occultation)."""
+        """Gallery = reference crops + augmentations (without occlusion)."""
         rng = np.random.default_rng(seed)
         n_aug = int(self.cfg.reid.n_augment_gallery if n_aug is None else n_aug)
         imgs = []
@@ -304,27 +304,27 @@ class TargetReID:
     # --- scores --------------------------------------------------------------
     def embed_scores(self, crops: list[np.ndarray]) -> np.ndarray:
         if self.gallery is None:
-            raise RuntimeError("Galerie non construite")
+            raise RuntimeError("Gallery not built")
         if not crops:
             return np.zeros(0, np.float32)
         e = np.concatenate(
             [self.embedder.embed(crops[i : i + 64]) for i in range(0, len(crops), 64)]
         )
-        # numpy 2.x + Accelerate (macOS) émet des RuntimeWarning parasites sur matmul float32
+        # numpy 2.x + Accelerate (macOS) emits spurious RuntimeWarnings on float32 matmul
         with np.errstate(all="ignore"):
             sims = e.astype(np.float64) @ self.gallery.T.astype(np.float64)
         return sims.max(axis=1).astype(np.float32)
 
     def color_score(self, crop: np.ndarray, mask: np.ndarray) -> float:
         if self.colors is None:
-            return 1.0  # sans modèle de couleur : neutre (w_color = 0)
+            return 1.0  # without a colour model: neutral (w_color = 0)
         prop = self.colors.proportion_score(crop, mask)
         h = hsv_hist(crop, mask)
         hs = max((hist_similarity(h, g) for g in self.gallery_hists), default=0.0)
         return 0.5 * prop + 0.5 * hs
 
     def score_crops(self, items: list[tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
-        """Score combiné ∈ [0,1] pour des (crop, masque)."""
+        """Combined score ∈ [0,1] for (crop, mask) pairs."""
         if not items:
             self.last_color = np.zeros(0, np.float32) if self.w_color > 0 else None
             return np.zeros(0, np.float32)
@@ -334,7 +334,7 @@ class TargetReID:
         if self.w_color <= 0:
             return emb01.astype(np.float32)
         col = np.array([self.color_score(c, m) for c, m in items], np.float32)
-        self.last_color = col  # part couleur, lue par le suivi (cible probable)
+        self.last_color = col  # colour share, read by the tracker (probable target)
         return combine_scores(emb01, col, self.w_embed, self.w_color)
 
     def score_detections(
@@ -349,9 +349,9 @@ class TargetReID:
 def combine_scores(
     emb: np.ndarray, color: np.ndarray, w_e: float, w_c: float, eps: float = 0.05
 ) -> np.ndarray:
-    """Moyenne géométrique pondérée : une couleur absente annule le score, quel que soit l'embedding.
+    """Weighted geometric mean: a missing colour cancels the score, whatever the embedding.
 
-    (DINOv2 est peu sensible à la teinte : une moyenne arithmétique laissait passer une gourde bleue.)
+    (DINOv2 is not very sensitive to hue: an arithmetic mean let a blue bottle through.)
     """
     w = w_e + w_c
     c = (np.asarray(color) + eps) / (1.0 + eps)
@@ -370,10 +370,10 @@ def load_threshold(cfg) -> float:
 def reference_crops(
     cfg, detector, ref_paths: list[Path], work_width: int = 1280
 ) -> list[tuple[np.ndarray, np.ndarray, dict]]:
-    """Localise la cible dans chaque photo de référence (détection + couleur) et renvoie le crop masqué.
+    """Locates the target in each reference photo (detection + colour) and returns the masked crop.
 
-    Le crop est extrait à pleine résolution puis réduit ; la détection est faite sur une image
-    de largeur `work_width` (la gourde peut être petite dans la scène).
+    The crop is extracted at full resolution then reduced; detection is done on an image
+    of width `work_width` (the bottle may be small in the scene).
     """
     colors = make_color_model(cfg.reid)
     out = []
@@ -389,14 +389,14 @@ def reference_crops(
         best, best_sc = None, -1.0
         for i, b in enumerate(d.boxes):
             crop, m = masked_crop(small, b, None if d.masks is None else d.masks[i])
-            # avec un modèle de couleur : la couleur départage ; sinon la détection la plus sûre
+            # with a colour model: colour decides; otherwise the most confident detection
             sc = (colors.proportion_score(crop, m) if colors is not None else 0.0) + 0.2 * float(
                 d.scores[i]
             )
             if sc > best_sc:
                 best, best_sc = i, sc
         if best is None:
-            log.warning("Cible introuvable dans %s", p)
+            log.warning("Target not found in %s", p)
             continue
         crop, m = masked_crop(small, d.boxes[best], None if d.masks is None else d.masks[best])
         out.append(

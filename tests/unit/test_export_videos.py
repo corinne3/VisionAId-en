@@ -1,4 +1,4 @@
-"""Export vidéo : rendu des trois vues sur une image synthétique, et écriture d'un MP4."""
+"""Video export: rendering of the three views on a synthetic image, and writing of an MP4."""
 
 import numpy as np
 import pytest

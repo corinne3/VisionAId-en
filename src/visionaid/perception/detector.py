@@ -1,4 +1,4 @@
-"""Détection open-vocabulary (YOLOE) avec chaîne de repli, et détecteur stub pour les tests."""
+"""Open-vocabulary detection (YOLOE) with a fallback chain, and stub detector for tests."""
 
 from __future__ import annotations
 
@@ -21,14 +21,14 @@ FALLBACK_ORDER = ["yoloe26", "yoloe11", "yoloworld", "coco"]
 
 
 class Detector(Protocol):
-    """Contrat : image BGR → Detections (boîtes, scores, labels, masques)."""
+    """Contract: BGR image → Detections (boxes, scores, labels, masks)."""
 
     def detect(self, image: np.ndarray, t: float = 0.0, frame_idx: int = 0) -> Detections: ...
 
 
 @contextlib.contextmanager
 def _in_dir(path: Path):
-    """Les téléchargements Ultralytics atterrissent dans le répertoire courant."""
+    """Ultralytics downloads land in the current directory."""
     path.mkdir(parents=True, exist_ok=True)
     old = os.getcwd()
     os.chdir(path)
@@ -39,7 +39,7 @@ def _in_dir(path: Path):
 
 
 class YoloDetector:
-    """YOLOE (prompt texte) avec repli YOLOE-11 → YOLO-World v2 → YOLO COCO « bottle »."""
+    """YOLOE (text prompt) with fallback YOLOE-11 → YOLO-World v2 → COCO YOLO "bottle"."""
 
     def __init__(self, cfg, prompts: list[str] | None = None, backend: str | None = None) -> None:
         self.cfg = cfg
@@ -63,13 +63,13 @@ class YoloDetector:
                 self._load(b)
                 self.backend = b
                 break
-            except Exception as e:  # noqa: BLE001 - on consigne et on passe au repli suivant
+            except Exception as e:  # noqa: BLE001 - we log it and move on to the next fallback
                 self.errors[b] = repr(e)[:300]
-                log.warning("Backend détecteur %s indisponible : %s", b, self.errors[b])
+                log.warning("Detector backend %s unavailable: %s", b, self.errors[b])
         if self.backend is None:
-            raise RuntimeError(f"Aucun détecteur disponible : {self.errors}")
+            raise RuntimeError(f"No detector available: {self.errors}")
         log.info(
-            "Détecteur : %s (%s) sur %s, prompts=%s",
+            "Detector: %s (%s) on %s, prompts=%s",
             self.backend,
             self.weights,
             self.device,
@@ -111,18 +111,18 @@ class YoloDetector:
                     else set(self.prompts)
                 )
                 self.class_filter = [i for i, n in names.items() if n in wanted]
-            # préchauffage
+            # warm-up
             m.predict(
                 np.zeros((self.imgsz, self.imgsz, 3), np.uint8), device=self.device, verbose=False
             )
         self.model = m
 
     def set_prompts(self, prompts: list[str]) -> bool:
-        """Change le vocabulaire (YOLOE / YOLO-World) ; False si le modèle ne le permet pas.
+        """Changes the vocabulary (YOLOE / YOLO-World); False if the model does not allow it.
 
-        Le score de chaque classe ne dépend que de son propre texte et la suppression des
-        doublons est faite classe par classe : ajouter des classes (meubles) ne change pas les
-        détections des classes déjà présentes (vérifié sur les photos de référence).
+        The score of each class only depends on its own text and duplicate suppression
+        is done class by class: adding classes (furniture) does not change the
+        detections of the classes already present (checked on the reference photos).
         """
         if self.backend not in ("yoloe26", "yoloe11", "yoloworld"):
             return False
@@ -131,7 +131,7 @@ class YoloDetector:
             return True
         with _in_dir(self.weights_dir):
             if self.backend in ("yoloe26", "yoloe11"):
-                # plongements texte gardés par prompt : changer de cible ne les recalcule pas
+                # text embeddings kept per prompt: changing target does not recompute them
                 import torch
 
                 cache = self.__dict__.setdefault("_pe", {})
@@ -192,7 +192,7 @@ class YoloDetector:
         )
 
     def benchmark(self, image: np.ndarray, n: int = 20) -> float:
-        """Débit (images/s) sur une image donnée."""
+        """Throughput (images/s) on a given image."""
         self.detect(image)
         t0 = time.perf_counter()
         for _ in range(n):
@@ -201,7 +201,7 @@ class YoloDetector:
 
 
 class StubDetector:
-    """Détecteur factice : renvoie des détections programmées par index de frame."""
+    """Fake detector: returns detections programmed by frame index."""
 
     def __init__(
         self, script: dict[int, list[tuple[np.ndarray, float, str]]] | None = None, fn=None

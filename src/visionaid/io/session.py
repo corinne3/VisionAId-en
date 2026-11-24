@@ -1,8 +1,8 @@
-"""Sessions téléphone enregistrées : lecture, rejeu (images + IMU) et génération synthétique.
+"""Recorded phone sessions: reading, replay (images + IMU) and synthetic generation.
 
-Format décrit dans `docs/protocol.md`. `SessionSource` est une `FrameSource` comme
-`VideoFileSource` : elle se rejoue au rythme réel avec `ReplaySource`, et `SessionImu` fournit les
-échantillons inertiels entre deux images.
+Format described in `docs/protocol.md`. `SessionSource` is a `FrameSource` like
+`VideoFileSource`: it replays at real-time pace with `ReplaySource`, and `SessionImu` provides the
+inertial samples between two images.
 """
 
 from __future__ import annotations
@@ -20,13 +20,13 @@ from visionaid.io.intrinsics import Intrinsics, make_intrinsics
 
 @dataclass
 class Session:
-    """Contenu d'une session chargé en mémoire (sauf les images, lues à la demande)."""
+    """Content of a session loaded in memory (except the images, read on demand)."""
 
     dir: Path
     meta: dict
-    frames: list[dict]  # lignes de frames.jsonl, triées par seq
+    frames: list[dict]  # lines of frames.jsonl, sorted by seq
     imu_t: np.ndarray  # (N,)
-    imu_gyro: np.ndarray  # (N,3) rad/s, repère appareil
+    imu_gyro: np.ndarray  # (N,3) rad/s, device frame
     imu_accel: np.ndarray  # (N,3) m/s²
     clock: list[ClockSync] = field(default_factory=list)
 
@@ -42,7 +42,7 @@ class Session:
 
     @property
     def fps(self) -> float:
-        """Cadence médiane des images."""
+        """Median frame rate."""
         if len(self.frames) < 2:
             return 15.0
         dt = np.diff([f["t_phone"] for f in self.frames])
@@ -55,13 +55,13 @@ class Session:
 
     @property
     def camera_height_m(self) -> float | None:
-        """Hauteur caméra déclarée à l'enregistrement, en mètres (cm acceptés)."""
+        """Camera height declared at recording, in metres (cm accepted)."""
         from visionaid.utils.config import length_to_m
 
-        return length_to_m(self.meta.get("camera_height_m"), "hauteur caméra de la session")
+        return length_to_m(self.meta.get("camera_height_m"), "session camera height")
 
     def clock_offset(self) -> ClockSync | None:
-        """Meilleure estimation d'horloge de la session (incertitude minimale)."""
+        """Best clock estimate of the session (minimal uncertainty)."""
         if not self.clock:
             return None
         return min(self.clock, key=lambda c: c.uncertainty)
@@ -82,16 +82,16 @@ def _jsonl(path: Path) -> list[dict]:
             continue
         try:
             out.append(json.loads(line))
-        except json.JSONDecodeError:  # dernière ligne tronquée (arrêt brutal)
+        except json.JSONDecodeError:  # truncated last line (abrupt stop)
             continue
     return out
 
 
 def load_session(directory: str | Path) -> Session:
-    """Charge métadonnées, index des images, IMU et horloge d'une session."""
+    """Loads the metadata, image index, IMU and clock of a session."""
     d = Path(directory)
     if not is_session_dir(d):
-        raise FileNotFoundError(f"pas une session : {d} (frames.jsonl / meta.json absents)")
+        raise FileNotFoundError(f"not a session: {d} (frames.jsonl / meta.json missing)")
     meta = json.loads((d / "meta.json").read_text())
     frames = sorted(
         (f for f in _jsonl(d / "frames.jsonl") if (d / f["file"]).exists()),
@@ -103,7 +103,7 @@ def load_session(directory: str | Path) -> Session:
         t = np.array([s["t"] for s in imu], float)
         g = np.array([s["gyro"] for s in imu], float).reshape(-1, 3)
         a = np.array([s["accel"] for s in imu], float).reshape(-1, 3)
-        keep = np.r_[True, np.diff(t) > 0]  # doublons éventuels
+        keep = np.r_[True, np.diff(t) > 0]  # possible duplicates
         t, g, a = t[keep], g[keep], a[keep]
     else:
         t, g, a = np.zeros(0), np.zeros((0, 3)), np.zeros((0, 3))
@@ -116,7 +116,7 @@ def load_session(directory: str | Path) -> Session:
 
 
 def session_hash(directory: str | Path, extra: str = "") -> str:
-    """Empreinte d'une session (index des images et de l'IMU) pour les caches disque."""
+    """Fingerprint of a session (image and IMU index) for the disk caches."""
     d = Path(directory)
     h = hashlib.sha1()
     for name in ("frames.jsonl", "imu.jsonl", "meta.json"):
@@ -128,14 +128,14 @@ def session_hash(directory: str | Path, extra: str = "") -> str:
 
 
 def media_hash(path: str | Path, extra: str = "") -> str:
-    """Empreinte d'une vidéo ou d'une session."""
+    """Fingerprint of a video or a session."""
     from visionaid.utils.report import file_hash
 
     return session_hash(path, extra) if is_session_dir(path) else file_hash(path, extra)
 
 
 class SessionSource:
-    """`FrameSource` lisant les images d'une session (t = horloge du téléphone, idx = seq)."""
+    """`FrameSource` reading the images of a session (t = phone clock, idx = seq)."""
 
     def __init__(
         self,
@@ -150,7 +150,7 @@ class SessionSource:
 
         self.session = session if isinstance(session, Session) else load_session(session)
         if not self.session.frames:
-            raise ValueError(f"session sans image : {self.session.dir}")
+            raise ValueError(f"session without images: {self.session.dir}")
         self._cv2 = cv2
         f0 = self.session.frames[0]
         w0, h0 = int(f0["w"]), int(f0["h"])
@@ -158,7 +158,7 @@ class SessionSource:
             self.out_w, self.out_h = int(width), int(round(h0 * width / w0))
         else:
             self.out_w, self.out_h = w0, h0
-        if cfg is not None:  # calibration de l'appareil si disponible
+        if cfg is not None:  # device calibration if available
             from visionaid.calib.device import phone_intrinsics
 
             self._intr = phone_intrinsics(cfg, self.out_w, self.out_h)
@@ -199,7 +199,7 @@ class SessionSource:
             rec = self.session.frames[self._i]
             self._i += 1
             img = cv2.imread(str(self.session.dir / rec["file"]), cv2.IMREAD_COLOR)
-            if img is None:  # JPEG corrompu : ignoré
+            if img is None:  # corrupted JPEG: ignored
                 continue
             if img.shape[1] != self.out_w or img.shape[0] != self.out_h:
                 img = cv2.resize(img, (self.out_w, self.out_h), interpolation=cv2.INTER_AREA)
@@ -221,7 +221,7 @@ class _DefaultIntr:
 
 
 class SessionImu:
-    """Accès aux échantillons IMU d'une session par fenêtre temporelle (horloge du téléphone)."""
+    """Access to the IMU samples of a session by time window (phone clock)."""
 
     def __init__(self, session: Session) -> None:
         self.s = session
@@ -230,7 +230,7 @@ class SessionImu:
         return len(self.s.imu_t)
 
     def window(self, t0: float | None, t1: float) -> ImuBatch:
-        """Échantillons avec t0 < t ≤ t1 (t0 = None : depuis le début)."""
+        """Samples with t0 < t ≤ t1 (t0 = None: from the start)."""
         t = self.s.imu_t
         i0 = 0 if t0 is None else int(np.searchsorted(t, t0, side="right"))
         i1 = int(np.searchsorted(t, t1, side="right"))
@@ -239,7 +239,7 @@ class SessionImu:
         )
 
     def rate(self) -> float:
-        """Cadence médiane (Hz)."""
+        """Median rate (Hz)."""
         if len(self.s.imu_t) < 2:
             return 0.0
         dt = np.diff(self.s.imu_t)
@@ -247,7 +247,7 @@ class SessionImu:
 
 
 def open_media(cfg, path: str | Path | None = None, **kw):
-    """Source d'images pour une vidéo (fichier) ou une session (dossier)."""
+    """Image source for a video (file) or a session (folder)."""
     from visionaid.io.sources import VideoFileSource
     from visionaid.utils.config import resolve_path
 
@@ -267,9 +267,9 @@ def write_synthetic_session(
     meta: dict | None = None,
     calib_images: list[np.ndarray] | None = None,
 ) -> Path:
-    """Écrit une session synthétique (tests, phases 16-18) sans passer par le serveur.
+    """Writes a synthetic session (tests, phases 16-18) without going through the server.
 
-    `imu_fn(t_rel) -> (gyro rad/s (3,), accel m/s² (3,))` en repère appareil.
+    `imu_fn(t_rel) -> (gyro rad/s (3,), accel m/s² (3,))` in the device frame.
     """
     import cv2
 

@@ -1,4 +1,4 @@
-"""Pipeline complet sur vidéo synthétique avec stubs (sans modèles) : vérifie le câblage."""
+"""Full pipeline on a synthetic video with stubs (without models): checks the wiring."""
 
 import time
 
@@ -15,7 +15,7 @@ from visionaid.utils.config import load_config
 pytestmark = [pytest.mark.integration, pytest.mark.unit]
 
 W, H = 320, 480
-BOX = np.array([150, 300, 175, 360], float)  # gourde posée au sol, ~3 m devant
+BOX = np.array([150, 300, 175, 360], float)  # bottle on the floor, ~3 m ahead
 
 
 def scene_image(rng):

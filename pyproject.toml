@@ -1,7 +1,7 @@
 [project]
 name = "visionaid"
 version = "0.1.0"
-description = "Guidage sonore binaural vers un objet détecté en temps réel, pour personnes malvoyantes"
+description = "Binaural sound guidance towards an object detected in real time, for visually impaired people"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -42,9 +42,9 @@ testpaths = ["tests"]
 pythonpath = ["tests"]
 timeout = 120
 markers = [
-    "unit: tests rapides synthétiques",
-    "data: nécessitent la vidéo ou les photos de référence",
-    "slow: chargent un vrai modèle",
+    "unit: fast synthetic tests",
+    "data: need the video or the reference photos",
+    "slow: load a real model",
     "integration: pipeline complet",
 ]
 addopts = "-ra -p no:dash"

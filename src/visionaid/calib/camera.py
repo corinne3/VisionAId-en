@@ -1,4 +1,4 @@
-"""Calibration de la caméra au damier (OpenCV), à partir des vues de calibration d'une session."""
+"""Checkerboard camera calibration (OpenCV), from the calibration views of a session."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import yaml
 
 @dataclass
 class CameraCalibration:
-    """Résultat : K, distorsion, taille d'image, erreurs."""
+    """Result: K, distortion, image size, errors."""
 
     K: np.ndarray
     dist: np.ndarray
@@ -27,7 +27,7 @@ class CameraCalibration:
 
     @property
     def hfov_long_side_deg(self) -> float:
-        """Champ de vision selon le grand côté (comparable à `intrinsics.hfov_deg`)."""
+        """Field of view along the long side (comparable to `intrinsics.hfov_deg`)."""
         long_side = max(self.width, self.height)
         f = self.K[0, 0] if self.width >= self.height else self.K[1, 1]
         return math.degrees(2 * math.atan(long_side / 2 / f))
@@ -48,8 +48,8 @@ class CameraCalibration:
 
 
 def square_size_from_notes(notes: str) -> float | None:
-    """Lit « case = 22 mm », « case =2.2cm » ou « case: 0,022 m » dans les notes ; renvoie des
-    mètres. Sans unité, la valeur est lue en mm si > 5, sinon en cm."""
+    """Reads « case = 22 mm », « case =2.2cm » or « case: 0,022 m » in the notes; returns
+    metres. Without a unit, the value is read in mm if > 5, otherwise in cm."""
     m = re.search(
         r"case\s*[=:]?\s*([0-9]+(?:[.,][0-9]+)?)\s*(mm|cm|m)?\b", notes or "", re.IGNORECASE
     )
@@ -61,12 +61,12 @@ def square_size_from_notes(notes: str) -> float | None:
 
 
 def sharpness(gray: np.ndarray) -> float:
-    """Netteté (variance du laplacien)."""
+    """Sharpness (variance of the Laplacian)."""
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
 def find_corners(gray: np.ndarray, pattern: tuple[int, int]) -> np.ndarray | None:
-    """Coins intérieurs du damier (sous-pixel), ou None."""
+    """Inner corners of the checkerboard (sub-pixel), or None."""
     flags = cv2.CALIB_CB_EXHAUSTIVE | cv2.CALIB_CB_ACCURACY
     ok, corners = cv2.findChessboardCornersSB(gray, pattern, flags=flags)
     if not ok:
@@ -91,7 +91,7 @@ def calibrate_images(
     min_sharpness: float = 30.0,
     reject_factor: float = 2.5,
 ) -> CameraCalibration:
-    """Calibre K et la distorsion ; rejette vues floues, sans damier ou aberrantes."""
+    """Calibrates K and the distortion; rejects blurred views, views without checkerboard or outliers."""
     obj = np.zeros((pattern[0] * pattern[1], 3), np.float32)
     obj[:, :2] = np.mgrid[0 : pattern[0], 0 : pattern[1]].T.reshape(-1, 2) * square_m
     pts, names, rejected = [], [], {}
@@ -106,20 +106,20 @@ def calibrate_images(
         if size is None:
             size = gray.shape[::-1]
         if gray.shape[::-1] != size:
-            rejected[name] = "taille différente"
+            rejected[name] = "different size"
             continue
         if sharpness(gray) < min_sharpness:
             rejected[name] = "floue"
             continue
         c = find_corners(gray, pattern)
         if c is None:
-            rejected[name] = "damier non trouvé"
+            rejected[name] = "checkerboard not found"
             continue
         pts.append(c)
         names.append(name)
     if len(pts) < min_views:
         raise ValueError(
-            f"{len(pts)} vues exploitables (minimum {min_views}) ; rejets : {rejected}"
+            f"{len(pts)} usable views (minimum {min_views}); rejected: {rejected}"
         )
 
     def run(sel):
@@ -154,7 +154,7 @@ def render_board_view(
     square_m: float = 0.025,
     px_per_square: int = 60,
 ) -> np.ndarray:
-    """Image synthétique d'un damier vu par une caméra sténopé (tests)."""
+    """Synthetic image of a checkerboard seen by a pinhole camera (tests)."""
     cols, rows = pattern[0] + 1, pattern[1] + 1
     margin = px_per_square
     bw, bh = cols * px_per_square + 2 * margin, rows * px_per_square + 2 * margin
@@ -164,7 +164,7 @@ def render_board_view(
             if (r + c) % 2 == 0:
                 y, x = margin + r * px_per_square, margin + c * px_per_square
                 board[y : y + px_per_square, x : x + px_per_square] = 0
-    # repère du damier : origine au premier coin intérieur, unités en mètres
+    # checkerboard frame: origin at the first inner corner, units in metres
     s = square_m / px_per_square
     A = np.array(
         [[s, 0, -(margin + px_per_square) * s], [0, s, -(margin + px_per_square) * s], [0, 0, 1]]

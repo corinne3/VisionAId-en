@@ -1,4 +1,4 @@
-"""Blocs minimaux pour tester le bus (importables par les sous-processus)."""
+"""Minimal blocks to test the bus (importable by the subprocesses)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from visionaid.bus.messages import Frame, GuidanceCue
 
 
 class CounterSource:
-    """Publie des frames numérotées à cadence fixe."""
+    """Publishes numbered frames at a fixed rate."""
 
     def __init__(self, cfg: dict) -> None:
         self.i = 0
@@ -23,7 +23,7 @@ class CounterSource:
 
 
 class SlowEcho:
-    """Consomme les frames lentement et renvoie un cue avec l'index reçu."""
+    """Consumes the frames slowly and returns a cue with the received index."""
 
     def __init__(self, cfg: dict) -> None:
         self.delay = float(cfg.get("test_delay", 0.05))

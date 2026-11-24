@@ -1,4 +1,4 @@
-"""Phase 16 : lecture et rejeu des sessions téléphone."""
+"""Phase 16: reading and replaying phone sessions."""
 
 from __future__ import annotations
 
@@ -51,11 +51,11 @@ def test_load_and_replay_identical(session_dir):
     assert len(frames) == 30
     assert [f.frame_idx for f in frames] == [r["seq"] for r in s.frames]
     assert [f.t for f in frames] == [r["t_phone"] for r in s.frames]
-    # images identiques au JPEG enregistré (décodage sans perte supplémentaire)
+    # images identical to the recorded JPEG (decoding without additional loss)
     raw = cv2.imread(str(session_dir / s.frames[5]["file"]))
     np.testing.assert_array_equal(frames[5].image, raw)
     assert frames[0].t_phone == frames[0].t and frames[0].t_recv is not None
-    # deux lectures donnent exactement la même chose (déterminisme)
+    # two reads give exactly the same thing (determinism)
     again = list(SessionSource(s, width=None))
     assert all(np.array_equal(a.image, b.image) for a, b in zip(frames, again, strict=True))
 
@@ -66,7 +66,7 @@ def test_width_reduction_and_intrinsics(session_dir):
     f = src.read()
     assert f.image.shape[:2] == (120, 160)
     assert f.K[0, 2] == pytest.approx(80) and f.K[1, 2] == pytest.approx(60)
-    assert SessionSource(session_dir, width=1000).read().image.shape[1] == 320  # jamais agrandie
+    assert SessionSource(session_dir, width=1000).read().image.shape[1] == 320  # never enlarged
 
 
 def test_imu_window_covers_inter_frame_interval(session_dir):
@@ -78,12 +78,12 @@ def test_imu_window_covers_inter_frame_interval(session_dir):
     for f in SessionSource(s, width=None):
         b = imu.window(prev, f.t)
         if prev is not None:
-            assert len(b) >= 3  # ~4 échantillons à 60 Hz entre deux images à 15 Hz
+            assert len(b) >= 3  # ~4 samples at 60 Hz between two images at 15 Hz
             assert b.t[0] > prev and b.t[-1] <= f.t
-            assert f.t - b.t[-1] < 1 / 60 + 1e-9  # aucun trou en fin de fenêtre
+            assert f.t - b.t[-1] < 1 / 60 + 1e-9  # no gap at the end of the window
         total += len(b)
         prev = f.t
-    # les fenêtres successives partitionnent l'IMU jusqu'à la dernière image
+    # successive windows partition the IMU up to the last image
     assert total == int(np.sum(s.imu_t <= s.frames[-1]["t_phone"]))
 
 
@@ -104,7 +104,7 @@ def test_open_media_and_hash(session_dir, tmp_path):
 
 def test_truncated_last_line_tolerated(session_dir):
     with open(session_dir / "imu.jsonl", "a") as fh:
-        fh.write('{"t": 1.0, "gyro": [0,')  # arrêt brutal pendant l'écriture
+        fh.write('{"t": 1.0, "gyro": [0,')  # abrupt stop during writing
     s = load_session(session_dir)
     assert len(s.imu_t) > 100
 

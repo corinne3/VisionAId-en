@@ -1,4 +1,4 @@
-"""Calcul des consignes de guidage (azimut/élévation relatifs à la tête, distance, messages)."""
+"""Computation of the guidance instructions (azimuth/elevation relative to the head, distance, messages)."""
 
 from __future__ import annotations
 
@@ -31,11 +31,11 @@ MESSAGES = {
 
 
 def head_frame(T_world_head: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(position, avant horizontal, gauche horizontal) de la tête dans le monde (z haut)."""
+    """(position, horizontal forward, horizontal left) of the head in the world (z up)."""
     pos = T_world_head[:3, 3]
     fwd = T_world_head[:3, 2].copy()  # axe optique
     fwd[2] = 0.0
-    if np.linalg.norm(fwd) < 1e-6:  # regard vertical : on prend −y caméra
+    if np.linalg.norm(fwd) < 1e-6:  # vertical gaze: take camera −y
         fwd = -T_world_head[:3, 1].copy()
         fwd[2] = 0.0
     fwd /= np.linalg.norm(fwd)
@@ -46,13 +46,13 @@ def head_frame(T_world_head: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.nda
 def blocked_along(
     cm: Costmap | None, pos: np.ndarray, bearing: float, dist: float, half_width: float
 ) -> bool:
-    """Un obstacle de la carte se trouve-t-il dans le couloir du corps (demi-largeur
-    `half_width`) le long de la direction monde `bearing`, sur `dist` mètres ?"""
+    """Is an obstacle of the map inside the body corridor (half width
+    `half_width`) along the world direction `bearing`, over `dist` metres?"""
     if cm is None or dist <= 0:
         return False
     res = float(cm.resolution)
     c, s = math.cos(bearing), math.sin(bearing)
-    along = np.arange(0.2, dist + 1e-9, res)  # pas sous les pieds (bruit de la carte)
+    along = np.arange(0.2, dist + 1e-9, res)  # not under the feet (map noise)
     side = np.arange(-half_width, half_width + 1e-9, res)
     a, b = np.meshgrid(along, side)
     x = pos[0] + a * c - b * s
@@ -65,10 +65,10 @@ def blocked_along(
 
 
 def relative_direction(T_world_head: np.ndarray, p_world: np.ndarray) -> tuple[float, float, float]:
-    """(azimut gauche+, élévation haut+, distance horizontale) d'un point monde."""
+    """(azimuth left+, elevation up+, horizontal distance) of a world point."""
     pos, fwd, left = head_frame(T_world_head)
     p = np.asarray(p_world, float)
-    if p.shape[0] == 2:  # point au sol sans hauteur : à hauteur de tête (élévation nulle)
+    if p.shape[0] == 2:  # floor point without height: at head height (zero elevation)
         p = np.array([p[0], p[1], pos[2]])
     v = p - pos
     hd = float(math.hypot(v[0], v[1]))
@@ -84,10 +84,10 @@ def frontal_obstacle(
     cone_deg: float,
     half_width: float = np.inf,
 ) -> tuple[float, float]:
-    """Distance et azimut de l'obstacle occupé le plus proche dans le cône frontal (inf si aucun).
+    """Distance and azimuth of the closest occupied obstacle in the frontal cone (inf if none).
 
-    `half_width` restreint au couloir balayé par le corps (|écart latéral| < half_width) : un
-    obstacle sur le côté d'un chemin dégagé ne déclenche pas d'alerte.
+    `half_width` restricts to the corridor swept by the body (|lateral offset| < half_width): an
+    obstacle beside a clear path does not trigger an alert.
     """
     if cm is None:
         return math.inf, 0.0
@@ -115,7 +115,7 @@ def frontal_obstacle(
 
 
 class GuidanceEngine:
-    """Combine pose, objet, chemin et costmap en une consigne `GuidanceCue`."""
+    """Combines pose, object, path and costmap into a `GuidanceCue` instruction."""
 
     def __init__(
         self,
@@ -128,7 +128,7 @@ class GuidanceEngine:
     ) -> None:
         g = cfg.guidance
         self.sm = GuidanceStateMachine(g)
-        # tête = torse (hypothèse du hackathon) : `body.T_cam_body` prime sur `guidance.T_cam_head`
+        # head = torso (hackathon assumption): `body.T_cam_body` takes precedence over `guidance.T_cam_head`
         body = getattr(cfg, "body", None)
         T = getattr(body, "T_cam_body", None) if body is not None else None
         self.T_cam_head = np.asarray(T if T is not None else g.T_cam_head, float)
@@ -143,22 +143,22 @@ class GuidanceEngine:
         self.last_state = None
         self.sweep_rate = math.radians(float(cfg.sim.sweep_rate_dps))
         self.approach_m = float(g.approach_m)
-        # portée de la recherche d'obstacles : celle de l'alerte, ou celle du son des obstacles
+        # range of the obstacle search: that of the alert, or that of the obstacle sound
         a = getattr(cfg, "audio", None)
         self.obstacle_range = max(
             self.obstacle_m + 0.3, float(getattr(a, "obstacle_far_m", 0.0) or 0.0)
         )
         self.messages: list[tuple[float, str]] = []
-        # continuité de la direction du son : la direction à suivre est lissée dans le repère
-        # monde (un changement de chemin glisse au lieu de sauter d'une oreille à l'autre), puis
-        # ramenée à la tête : une rotation du corps reste rendue immédiatement
+        # continuity of the sound direction: the direction to follow is smoothed in the
+        # world frame (a path change glides instead of jumping from one ear to the other), then
+        # brought back to the head: a body rotation is still rendered immediately
         self.dir_tau = float(getattr(g, "direction_tau_s", 0.0) or 0.0)
         self.dir_rate = math.radians(float(getattr(g, "direction_max_rate_dps", 0.0) or 0.0))
         self._bearing: float | None = None
         self.dir_safe_m = float(getattr(g, "direction_safe_m", 1.0) or 0.0)
         self.n_dir_snaps = 0
         self._t_bearing = -math.inf
-        # annonces vocales (objet trouvé, approche) ; meubles fournis par le modèle du monde
+        # voice announcements (object found, approach); furniture provided by the world model
         from visionaid.guidance.narration import Narrator
 
         tgt = getattr(cfg, "target", None)
@@ -169,8 +169,8 @@ class GuidanceEngine:
         self.target_id = int(target_id)
 
     def smooth_bearing(self, t: float, bearing: float) -> float:
-        """Direction monde lissée (passe-bas `direction_tau_s`, puis au plus
-        `direction_max_rate_dps`). Repart de la direction brute après une interruption > 1 s."""
+        """Smoothed world direction (low-pass `direction_tau_s`, then at most
+        `direction_max_rate_dps`). Restarts from the raw direction after an interruption > 1 s."""
         if self._bearing is None or t - self._t_bearing > 1.0 or t < self._t_bearing:
             self._bearing = bearing
         else:
@@ -185,7 +185,7 @@ class GuidanceEngine:
         return self._bearing
 
     def voice(self, t: float, state: str) -> str:
-        """Message court au changement d'état, au plus un toutes les `voice_min_interval_s`."""
+        """Short message on state change, at most one every `voice_min_interval_s`."""
         if state == self.last_state:
             return ""
         if t - self.t_voice < self.voice_interval:
@@ -206,7 +206,7 @@ class GuidanceEngine:
         cm: Costmap | None,
     ) -> GuidanceCue:
         if obj is not None and getattr(obj, "target_id", 0) != self.target_id:
-            obj = None  # objet d'une demande précédente
+            obj = None  # object of a previous request
         if path is not None and getattr(path, "target_id", 0) != self.target_id:
             path = None
         lost = pose is None or pose.quality == "lost"
@@ -219,7 +219,7 @@ class GuidanceEngine:
                 _, _, dist = relative_direction(T_head, obj.position)
                 if (
                     obj.state == "candidate"
-                ):  # cible probable : jamais « arrivé » avant confirmation
+                ):  # probable target: never "arrived" before confirmation
                     dist = max(dist, self.arrived_floor)
             obst_d, obst_az = frontal_obstacle(
                 cm, T_head, self.obstacle_range, self.cone, self.corridor
@@ -248,9 +248,9 @@ class GuidanceEngine:
                         and blocked_along(cm, pos, b, self.dir_safe_m, self.corridor)
                         and not blocked_along(cm, pos, raw, self.dir_safe_m, self.corridor)
                     ):
-                        # la direction lissée mène sur un obstacle et la nouvelle est dégagée
-                        # (chemin replanifié pour l'éviter) : la sécurité prime, on la prend
-                        # tout de suite. Si les deux sont encombrées (pièce meublée), on lisse.
+                        # the smoothed direction leads onto an obstacle and the new one is clear
+                        # (path replanned to avoid it): safety first, we take it
+                        # immediately. If both are cluttered (furnished room), we smooth.
                         b = self._bearing = raw
                         self.n_dir_snaps += 1
                     guide_az = math.atan2(math.sin(b - yaw), math.cos(b - yaw))
@@ -268,14 +268,14 @@ class GuidanceEngine:
                     else 1.0
                 )
             elif state == SEARCHING:
-                az = math.radians(60.0) * math.sin(self.sweep_rate * t)  # consigne de balayage lent
+                az = math.radians(60.0) * math.sin(self.sweep_rate * t)  # slow sweep instruction
                 guide_az = az
             if state != APPROACHING and state != ARRIVED:
                 el = 0.0
         if state == TRACKING_LOST:
             alert = 1.0
-        # obstacle à signaler par le son : objet connu et pas encore tout près (le meuble qui
-        # porte la cible n'est pas un obstacle), même règle que l'alerte
+        # obstacle to signal by sound: object known and not yet very close (the furniture
+        # carrying the target is not an obstacle), same rule as the alert
         obst_report = obst_d if known and dist >= self.approach_m else math.inf
         self.narrator.update(t, state, T_head, obj, path, cm, self.landmarks, dist, obst_d)
         speech, speech_id, duck = self.narrator.current(t)
@@ -298,9 +298,9 @@ class GuidanceEngine:
     def _guide_direction(
         self, T_head, obj, path, near: bool, direct: bool = False
     ) -> tuple[float, float]:
-        """(azimut, élévation) du chemin à suivre : visée du chemin au loin ; près de la cible,
-        fin du chemin (dégagée) tant que le but est à plus de `final_direct_m`, puis l'objet
-        (`direct` : l'objet tout de suite)."""
+        """(azimuth, elevation) of the path to follow: path aiming point when far; near the target,
+        end of the path (clear) while the goal is more than `final_direct_m` away, then the object
+        (`direct`: the object straight away)."""
         if not near:
             target = (
                 path.lookahead
@@ -319,7 +319,7 @@ class GuidanceEngine:
                 )
         return az, el
 
-    # interface Block du bus
+    # Block interface of the bus
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None:
         pose = inputs.get("pose_world") or inputs.get("pose")
         if pose is None:

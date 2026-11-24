@@ -1,4 +1,4 @@
-"""Phase 17 : calibration caméra (damier) et IMU ↔ caméra sur données synthétiques."""
+"""Phase 17: camera (checkerboard) and IMU ↔ camera calibration on synthetic data."""
 
 from __future__ import annotations
 
@@ -28,16 +28,16 @@ def test_camera_calibration_recovers_K():
         rvec = rng.uniform(-0.5, 0.5, 3)
         rvec[2] = rng.uniform(-0.3, 0.3)
         R, _ = cv2.Rodrigues(rvec)
-        center = np.array([0.1, 0.0625, 0.0])  # centre du damier (repère damier)
+        center = np.array([0.1, 0.0625, 0.0])  # centre of the checkerboard (checkerboard frame)
         t = np.array([rng.uniform(-0.03, 0.03), rng.uniform(-0.05, 0.05), rng.uniform(0.35, 0.55)])
         tvec = t - R @ center
         views.append(render_board_view(K_TRUE, rvec, tvec, (W, H)))
-    views.append(np.full((H, W, 3), 128, np.uint8))  # vue uniforme : rejetée (floue)
-    views.append(_texture(5))  # vue nette sans damier : rejetée
+    views.append(np.full((H, W, 3), 128, np.uint8))  # uniform view: rejected (blurred)
+    views.append(_texture(5))  # sharp view without checkerboard: rejected
     cal = calibrate_images(views, (9, 6), 0.025)
     assert cal.n_views >= 12
     assert cal.rejected.get("vue_14") == "floue"
-    assert cal.rejected.get("vue_15") == "damier non trouvé"
+    assert cal.rejected.get("vue_15") == "checkerboard not found"
     for k, (i, j) in enumerate([(0, 0), (1, 1), (0, 2), (1, 2)]):
         assert cal.K[i, j] == pytest.approx(K_TRUE[i, j], rel=0.02), k
     assert cal.rms_px < 0.5
@@ -60,7 +60,7 @@ def _texture(seed=0):
 
 @pytest.mark.parametrize("axis", [0, 1, 2])
 def test_visual_rotation_sign_convention(axis):
-    """La caméra tourne de ω·dt : l'estimation visuelle doit rendre ω dans le repère caméra."""
+    """The camera turns by ω·dt: the visual estimate must return ω in the camera frame."""
     img1 = _texture(axis)
     w_true = np.zeros(3)
     w_true[axis] = 0.6  # rad/s
@@ -75,14 +75,14 @@ def test_visual_rotation_sign_convention(axis):
 
 
 def _profile(t):
-    """Vitesse angulaire caméra (rad/s) : immobile 3 s, mouvements variés, immobile 3 s."""
+    """Camera angular velocity (rad/s): still for 3 s, varied movements, still for 3 s."""
     w = np.zeros((len(t), 3))
     m = (t > 3) & (t < 23)
     tt = t[m]
     w[m, 0] = 0.4 * np.sin(2 * np.pi * 0.31 * tt) + 0.2 * np.sin(2 * np.pi * 1.1 * tt)
     w[m, 1] = 1.2 * np.sin(2 * np.pi * 0.23 * tt + 1) + 0.4 * np.sin(2 * np.pi * 0.9 * tt)
     w[m, 2] = 0.3 * np.sin(2 * np.pi * 0.41 * tt + 2)
-    env = np.clip(np.minimum(t - 3, 23 - t), 0, 1)  # montée / descente douces
+    env = np.clip(np.minimum(t - 3, 23 - t), 0, 1)  # smooth rise / fall
     return w * env[:, None]
 
 
@@ -97,7 +97,7 @@ def _synthetic(delta=0.04, bias=(0.01, -0.02, 0.015), gyro_units_factor=1.0, see
     acc = np.array([0.0, 9.81, 0.0]) + rng.normal(0, 0.03, (len(t_imu), 3))
     moving = np.linalg.norm(w_cam, axis=1) > 0.05
     acc[moving] += rng.normal(0, 0.8, (moving.sum(), 3))
-    # images à 15 Hz ; l'image horodatée t correspond à l'instant IMU t + delta
+    # images at 15 Hz; the image timestamped t corresponds to the IMU instant t + delta
     t_f = np.arange(0.5, 25.5, 1 / 15) + 1000.0
     t0, t1 = t_f[:-1], t_f[1:]
     w_vis = []
@@ -123,12 +123,12 @@ def test_imu_cam_calibration_recovers_bias_offset_rotation():
 
 
 def test_imu_cam_detects_wrong_gyro_units():
-    # gyroscope en deg/s traité comme des rad/s : valeurs 57,3× trop grandes
+    # gyroscope in deg/s treated as rad/s: values 57.3× too large
     t_imu, gyro, acc, t0, t1, w_vis, R_true, R_prior = _synthetic(gyro_units_factor=180 / math.pi)
     cal = calibrate_imu_cam(t_imu, gyro, acc, t0, t1, w_vis, R_prior)
     assert not cal.units_ok
     assert cal.units_fix == pytest.approx(math.pi / 180)
-    assert any("unités" in n for n in cal.notes)
+    assert any("units" in n for n in cal.notes)
     assert rotation_angle_deg(cal.R_cam_imu @ R_true.T) < 2.0
 
 
@@ -142,11 +142,11 @@ def test_static_mask():
 
 def test_device_calibration_loading(tmp_path):
     cfg = load_config(overrides={"phone.calib_dir": str(tmp_path), "phone.device": "testphone"})
-    # sans fichier : champ de vision et a priori
+    # without a file: field of view and prior
     k0 = phone_intrinsics(cfg, 480, 640)
     imu0 = load_imu_calib(cfg)
     assert imu0.source == "a priori" and imu0.time_offset_s == 0.0
-    # calibration 480×640 portrait : appliquée à l'échelle, et tournée pour du paysage
+    # 480×640 portrait calibration: applied with scaling, and rotated for landscape
     (tmp_path / "testphone_camera.yaml").write_text(
         yaml.safe_dump({"K": K_TRUE.tolist(), "width": W, "height": H})
     )
@@ -177,8 +177,8 @@ def test_units_in_cm_or_mm():
     assert square_size_from_notes("Case =2.2cm") == pytest.approx(0.022)
     assert square_size_from_notes("case=22mm") == pytest.approx(0.022)
     assert square_size_from_notes("case: 0,022 m") == pytest.approx(0.022)
-    assert square_size_from_notes("case = 22") == pytest.approx(0.022)  # sans unité : mm
-    assert square_size_from_notes("case 2,2") == pytest.approx(0.022)  # petit nombre : cm
+    assert square_size_from_notes("case = 22") == pytest.approx(0.022)  # without a unit: mm
+    assert square_size_from_notes("case 2,2") == pytest.approx(0.022)  # small number: cm
     assert length_to_m(150) == pytest.approx(1.5)
     assert length_to_m(1.5) == pytest.approx(1.5)
     assert length_to_m(1500) == pytest.approx(1.5)
@@ -186,26 +186,26 @@ def test_units_in_cm_or_mm():
 
 
 def test_safari_ios_axes_and_accel_sign():
-    """Safari iOS : gyroscope [alpha, beta, gamma] = axes (x, y, z) au lieu de (z, x, y), et
-    accéléromètre de signe inversé. La calibration absorbe la permutation dans R_cam_imu et
-    mesure le signe de l'accéléromètre, appliqués séparément par la VIO."""
+    """Safari iOS: gyroscope [alpha, beta, gamma] = axes (x, y, z) instead of (z, x, y), and
+    accelerometer with inverted sign. Calibration absorbs the permutation in R_cam_imu and
+    measures the accelerometer sign, applied separately by the VIO."""
     from visionaid.calib.device import ImuCalib
     from visionaid.pose.imu import ImuBuffer
 
     t_imu, gyro, acc, t0, t1, w_vis, R_true, R_prior = _synthetic(bias=(0, 0, 0))
-    # la page envoie [beta, gamma, alpha] ; sous iOS ce sont les axes (y, z, x)
+    # the page sends [beta, gamma, alpha]; under iOS these are the axes (y, z, x)
     gyro_page = gyro[:, [1, 2, 0]]
-    acc_ios = -acc  # gravité de signe inversé
+    acc_ios = -acc  # gravity with inverted sign
     cal = calibrate_imu_cam(t_imu, gyro_page, acc_ios, t0, t1, w_vis, R_prior)
     assert cal.units_ok and cal.correlation > 0.9
     assert 100 < cal.prior_angle_deg < 140  # permutation cyclique ≈ 120°
-    assert cal.accel_sign == -1.0 and any("signe inversé" in n for n in cal.notes)
-    # appliquée : gyroscope ET gravité justes dans le repère caméra
+    assert cal.accel_sign == -1.0 and any("inverted sign" in n for n in cal.notes)
+    # applied: gyroscope AND gravity right in the camera frame
     ic = ImuCalib(cal.R_cam_imu, cal.gyro_bias, 0.0, 1.0, "test", cal.R_cam_acc, cal.accel_sign)
     from visionaid.bus.messages import ImuBatch
 
     b = ImuBuffer(ic)
     b.add(ImuBatch(t_imu[:50], gyro_page[:50], acc_ios[:50]))
     a_mean, _ = b.accel_mean(t_imu[0], t_imu[49])
-    up_cam = R_prior @ np.array([0.0, 1.0, 0.0])  # +y appareil dans le repère caméra
+    up_cam = R_prior @ np.array([0.0, 1.0, 0.0])  # device +y in the camera frame
     assert np.degrees(np.arccos(a_mean @ up_cam / np.linalg.norm(a_mean))) < 3

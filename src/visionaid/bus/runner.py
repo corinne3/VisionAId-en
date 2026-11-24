@@ -1,4 +1,4 @@
-"""Lance et arrête un graphe de nœuds (un sous-processus par nœud)."""
+"""Starts and stops a graph of nodes (one subprocess per node)."""
 
 from __future__ import annotations
 
@@ -13,18 +13,18 @@ log = get_logger("runner")
 
 
 def assign_ports(specs: list[NodeSpec], base_port: int) -> dict[str, int]:
-    """Un port par nœud producteur ; `topic:<sujet>` → port du producteur."""
+    """One port per producer node; `topic:<topic>` → port of the producer."""
     ports: dict[str, int] = {}
     for i, s in enumerate(specs):
         ports[s.name] = base_port + i
         for t in s.outputs:
             if "topic:" + t in ports:
-                raise ValueError(f"Sujet {t} publié par plusieurs nœuds")
+                raise ValueError(f"Topic {t} published by several nodes")
             ports["topic:" + t] = base_port + i
     for s in specs:
         for t in s.inputs:
             if "topic:" + t not in ports:
-                raise ValueError(f"Sujet {t} lu par {s.name} mais jamais publié")
+                raise ValueError(f"Topic {t} read by {s.name} but never published")
     return ports
 
 
@@ -33,7 +33,7 @@ def specs_from_config(graph: list[dict]) -> list[NodeSpec]:
 
 
 class GraphRunner:
-    """Démarre les nœuds en processus séparés (spawn) et les arrête proprement."""
+    """Starts the nodes in separate processes (spawn) and stops them cleanly."""
 
     def __init__(
         self,
@@ -53,7 +53,7 @@ class GraphRunner:
         self.stats: dict[str, dict] = {}
 
     def start(self) -> None:
-        # Les consommateurs d'abord (évite de perdre les premiers messages), producteurs ensuite.
+        # Consumers first (avoids losing the first messages), producers afterwards.
         for spec in reversed(self.specs):
             p = self.ctx.Process(
                 target=run_node,
@@ -63,13 +63,13 @@ class GraphRunner:
             )
             p.start()
             self.procs.append(p)
-        log.info("Graphe démarré : %s", [s.name for s in self.specs])
+        log.info("Graph started: %s", [s.name for s in self.specs])
 
     def alive(self) -> list[str]:
         return [p.name for p in self.procs if p.is_alive()]
 
     def stop(self) -> float:
-        """Arrête tous les nœuds ; retourne la durée d'arrêt (s)."""
+        """Stops all nodes; returns the stop duration (s)."""
         t0 = time.perf_counter()
         self.stop_event.set()
         deadline = t0 + self.stop_timeout_s
@@ -84,7 +84,7 @@ class GraphRunner:
             p.join(timeout=max(0.0, deadline - time.perf_counter()))
         for p in self.procs:
             if p.is_alive():
-                log.warning("Nœud %s ne s'arrête pas : terminate", p.name)
+                log.warning("Node %s does not stop: terminate", p.name)
                 p.terminate()
                 p.join(0.5)
             if p.is_alive():
@@ -109,25 +109,25 @@ class GraphRunner:
 
 
 class SequentialRunner:
-    """Mode mono-processus déterministe : mêmes blocs, appelés en séquence à chaque tick.
+    """Deterministic single-process mode: same blocks, called in sequence at each tick.
 
-    Les nœuds sont appelés dans l'ordre de `specs`. Un nœud sans déclencheur (source) est
-    appelé à chaque tick ; un nœud déclenché ne l'est que si son sujet a été produit pendant
-    le tick. Les nœuds à cadence (`rate_hz`) sont sous-échantillonnés selon le temps des
-    messages (`t`), pas l'horloge murale, d'où le déterminisme.
+    Nodes are called in the order of `specs`. A node without a trigger (source) is
+    called at each tick; a triggered node only if its topic was produced during
+    the tick. Rate-limited nodes (`rate_hz`) are subsampled according to the time of the
+    messages (`t`), not the wall clock, hence the determinism.
     """
 
     def __init__(self, specs: list[NodeSpec], cfg_raw: dict, blocks: dict | None = None) -> None:
         from visionaid.bus.nodes import load_factory
 
-        assign_ports(specs, 0)  # validation du graphe
+        assign_ports(specs, 0)  # graph validation
         self.specs = specs
         self.blocks = blocks or {s.name: load_factory(s.factory)(cfg_raw) for s in specs}
         self.latest: dict = {}
         self._last_run_t: dict[str, float] = {}
 
     def tick(self) -> dict:
-        """Exécute un tick ; retourne les messages produits (None si la source est épuisée)."""
+        """Runs one tick; returns the messages produced (None if the source is exhausted)."""
         produced: dict = {}
         for s in self.specs:
             if s.trigger is not None and s.trigger not in produced:

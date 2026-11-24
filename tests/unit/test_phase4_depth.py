@@ -73,5 +73,5 @@ def test_object_height():
     K = np.array([[500, 0, 80], [0, 500, 60], [0, 0, 1]], float)
     depth = np.full((120, 160), 2.0)
     mask = np.zeros((120, 160), bool)
-    mask[30:90, 70:90] = True  # 60 px à 2 m, f=500 → 0,24 m
+    mask[30:90, 70:90] = True  # 60 px at 2 m, f=500 → 0.24 m
     assert object_height_m(mask, depth, K) == pytest.approx(0.24, rel=0.05)

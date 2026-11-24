@@ -1,4 +1,4 @@
-"""Phase 18 : pose fusionnée VO + gyroscope + gravité, et recalage d'échelle par la hauteur caméra."""
+"""Phase 18: fused pose VO + gyroscope + gravity, and scale re-anchoring by camera height."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ pytestmark = pytest.mark.unit
 W, H = 480, 640
 K = np.array([[450.0, 0, W / 2], [0, 450.0, H / 2], [0, 0, 1]])
 R_CAM_IMU = np.diag([1.0, -1.0, -1.0])
-UP_WORLD = np.array([0.0, -1.0, 0.0])  # monde des tests de la phase 5 : y vers le bas
+UP_WORLD = np.array([0.0, -1.0, 0.0])  # world of the phase 5 tests: y down
 FPS = 30.0
 
 
@@ -53,7 +53,7 @@ def trajectory(n=100, step=0.04):
 
 
 def fast_yaw_trajectory(n=150, peak_dps=150.0, freq=0.5):
-    """Rotation sur place, lacet sinusoïdal (vitesse de crête `peak_dps`), légère avance."""
+    """Rotation on the spot, sinusoidal yaw (peak speed `peak_dps`), slight forward motion."""
     amp = np.radians(peak_dps) / (2 * np.pi * freq)
     Ts = []
     for k in range(n):
@@ -70,14 +70,14 @@ def observe(pts, desc, T_wc, rng, noise=0.5, keep=None):
     inside = (uv[:, 0] >= 0) & (uv[:, 0] < W) & (uv[:, 1] >= 0) & (uv[:, 1] < H)
     uv, z, d = uv[inside], pc[ok][inside, 2], desc[ok][inside]
     uv = uv + rng.normal(0, noise, uv.shape)
-    if keep is not None and keep < len(uv):  # flou de bouger : peu de points détectés
+    if keep is not None and keep < len(uv):  # motion blur: few points detected
         s = rng.choice(len(uv), keep, replace=False)
         uv, z, d = uv[s], z[s], d[s]
     return Observation(uv=uv, desc=d, depth=z)
 
 
 def imu_for(Ts, rate=120.0, acc_noise=0.05, gyro_noise=0.005, walk_acc=0.0, seed=0, delta=0.0):
-    """IMU (repère appareil) cohérente avec les poses caméra (images à FPS)."""
+    """IMU (device frame) consistent with the camera poses (images at FPS)."""
     rng = np.random.default_rng(seed)
     n = len(Ts)
     t_imu = np.arange(-0.6, (n - 1) / FPS + 0.2, 1 / rate)
@@ -91,7 +91,7 @@ def imu_for(Ts, rate=120.0, acc_noise=0.05, gyro_noise=0.005, walk_acc=0.0, seed
         a_cam[i] = Rk.T @ UP_WORLD * 9.81
     a_cam += rng.normal(0, acc_noise, a_cam.shape) + rng.normal(0, walk_acc, a_cam.shape)
     w_cam += rng.normal(0, gyro_noise, w_cam.shape)
-    # repère appareil : ω_imu = Rᵀ ω_cam ; horloge IMU = horloge image + delta
+    # device frame: ω_imu = Rᵀ ω_cam; IMU clock = image clock + delta
     return ImuBatch(t_imu + delta, w_cam @ R_CAM_IMU, a_cam @ R_CAM_IMU)
 
 
@@ -137,9 +137,9 @@ def test_fast_rotation_fewer_losses_than_vo():
     vio, vio_poses = run(Ts, w, use_imu=True, blur_dps=100)
     vo_lost = np.mean([p.quality == "lost" for p in vo_poses])
     vio_lost = np.mean([p.quality == "lost" for p in vio_poses])
-    assert vo_lost > 0.1, "le scénario doit faire décrocher la VO seule"
+    assert vo_lost > 0.1, "the scenario must make VO alone lose tracking"
     assert vio_lost <= 0.5 * vo_lost
-    # l'orientation reste juste malgré le flou
+    # orientation stays right despite the blur
     T0 = Ts[0]
     yaw_err = [
         rot_angle_deg((inv_T(T0) @ T)[:3, :3].T @ _vio_cam_rotation(p, vio_poses[0]))
@@ -149,7 +149,7 @@ def test_fast_rotation_fewer_losses_than_vo():
 
 
 def _vio_cam_rotation(p, p0):
-    """Rotation relative à la première pose (comparable à la vérité exprimée en première caméra)."""
+    """Rotation relative to the first pose (comparable to the truth expressed in the first camera)."""
     return p0.T_world_cam[:3, :3].T @ p.T_world_cam[:3, :3]
 
 
@@ -172,7 +172,7 @@ def test_translation_at_least_as_good_as_vo():
 def test_vo_cut_one_second_keeps_orientation():
     Ts = fast_yaw_trajectory(n=120, peak_dps=60)
     w = world_around()
-    cut = (40, 70)  # 1 s sans aucun point (caméra masquée)
+    cut = (40, 70)  # 1 s without any point (camera covered)
     est, poses = run(Ts, w, cut=cut)
     during = [p.quality for p in poses[cut[0] : cut[1]]]
     assert all(q == "degraded" for q in during), during
@@ -187,7 +187,7 @@ def test_vo_cut_one_second_keeps_orientation():
 
 def test_degraded_becomes_lost_after_timeout():
     Ts = fast_yaw_trajectory(n=120, peak_dps=30)
-    _, poses = run(Ts, world_around(), cut=(20, 110))  # 3 s sans vision (> 2 s)
+    _, poses = run(Ts, world_around(), cut=(20, 110))  # 3 s without vision (> 2 s)
     qs = [p.quality for p in poses[20:110]]
     assert qs[0] == "degraded" and qs[-1] == "lost"
     first_lost = qs.index("lost")
@@ -212,7 +212,7 @@ def test_imu_buffer_time_offset_and_rotation():
         R = b.delta_R(k / FPS, (k + 1) / FPS)
         R_true = Ts[k][:3, :3].T @ Ts[k + 1][:3, :3]
         assert rot_angle_deg(R.T @ R_true) < 0.15
-    assert b.delta_R(100.0, 101.0) is None  # hors couverture
+    assert b.delta_R(100.0, 101.0) is None  # outside coverage
 
 
 def test_gravity_filter_tracks_rotation():
@@ -221,7 +221,7 @@ def test_gravity_filter_tracks_rotation():
     R = rodrigues(np.array([np.radians(30), 0, 0]))
     g.predict(R)
     np.testing.assert_allclose(g.up, R.T @ [0, -1, 0], atol=1e-9)
-    g.correct(np.array([0.0, -30.0, 0.0]))  # choc : ignoré
+    g.correct(np.array([0.0, -30.0, 0.0]))  # shock: ignored
     assert g.n_corrections == 0
 
 
@@ -233,7 +233,7 @@ def floor_depth(h=480, w=320, pitch_deg=15.0, cam_h=1.3, box=True):
     den = np.cos(p) * y + np.sin(p)
     d = np.where(den > 1e-3, cam_h / np.maximum(den, 1e-3), 8.0)
     d = np.minimum(d, 6.0)
-    if box:  # meuble au premier plan en bas à gauche
+    if box:  # furniture in the foreground at the bottom left
         d[int(h * 0.7) :, : int(w * 0.3)] = 1.2
     up_cam = -np.array([0.0, np.cos(p), np.sin(p)])
     return d.astype(np.float32), Kf, up_cam
@@ -242,17 +242,17 @@ def floor_depth(h=480, w=320, pitch_deg=15.0, cam_h=1.3, box=True):
 def test_depth_scale_converges_to_camera_height():
     d, Kf, up = floor_depth()
     sc = DepthScaleCorrector(camera_height_m=1.3, ema=0.2)
-    biased = Depth(0.0, 0, d * 1.3, None)  # profondeur surestimée de 30 %
+    biased = Depth(0.0, 0, d * 1.3, None)  # depth overestimated by 30%
     for _ in range(30):
         out = sc(biased, Kf, up)
     assert sc.scale == pytest.approx(1 / 1.3, rel=0.05)
     np.testing.assert_allclose(out.depth, d, rtol=0.06)
-    # sans gravité : facteur inchangé
+    # without gravity: factor unchanged
     assert DepthScaleCorrector(1.3).update(d, Kf, None) == 1.0
 
 
 def test_depth_scale_perfectly_flat_floor():
-    """Cas limite : sol sans bruit (toutes les hauteurs dans un seul intervalle d'histogramme)."""
+    """Edge case: noiseless floor (all heights in a single histogram bin)."""
     d, Kf, up = floor_depth(box=False)
     sc = DepthScaleCorrector(camera_height_m=1.2, ema=1.0, n_init=1)
     sc.update(d, Kf, up)
@@ -260,13 +260,13 @@ def test_depth_scale_perfectly_flat_floor():
 
 
 def test_depth_scale_ignores_dominant_table():
-    """Essai réel : la caméra vise une table qui couvre le bas de l'image ; le sol, plus bas, n'est
-    qu'un mode secondaire. Le sol (et non la table) doit donner l'échelle, et une mesure isolée
-    aberrante ne doit pas faire sauter le facteur."""
+    """Real trial: the camera points at a table covering the bottom of the image; the floor, lower, is
+    only a secondary mode. The floor (not the table) must give the scale, and an isolated
+    outlier measurement must not make the factor jump."""
     d, Kf, up = floor_depth(box=False, pitch_deg=30.0, cam_h=1.5)
     h = d.shape[0]
     table = d.copy()
-    # dessus de table 0,75 m sous la caméra sur 70 % du bas de l'image
+    # table top 0.75 m below the camera over 70% of the bottom of the image
     v, _u = np.mgrid[0:h, 0 : d.shape[1]]
     y = (v - Kf[1, 2]) / Kf[1, 1]
     p = np.radians(30.0)

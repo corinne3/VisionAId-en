@@ -1,8 +1,8 @@
-"""Calibrations propres à un téléphone (`phone.device`), chargées automatiquement si présentes.
+"""Calibrations specific to a phone (`phone.device`), loaded automatically if present.
 
-- `config/calib/<appareil>_camera.yaml` : K et distorsion (phase 17, damier) ;
-- `config/calib/<appareil>_imu.yaml` : R_cam_imu, biais du gyroscope, décalage temporel, unités.
-À défaut : champ de vision de la config et valeurs a priori de `body`.
+- `config/calib/<device>_camera.yaml`: K and distortion (phase 17, checkerboard);
+- `config/calib/<device>_imu.yaml`: R_cam_imu, gyroscope bias, time offset, units.
+Otherwise: field of view from the config and prior values from `body`.
 """
 
 from __future__ import annotations
@@ -39,10 +39,10 @@ def imu_calib_path(cfg) -> Path:
 
 
 def phone_intrinsics(cfg, width: int, height: int) -> Intrinsics:
-    """Intrinsèques pour une image du téléphone : calibration de l'appareil si compatible.
+    """Intrinsics for a phone image: device calibration if compatible.
 
-    La calibration est mise à l'échelle si le rapport d'aspect est le même, ou tournée de 90°
-    si l'image est dans l'autre orientation (portrait/paysage). Sinon : champ de vision.
+    The calibration is scaled if the aspect ratio is the same, or rotated by 90°
+    if the image is in the other orientation (portrait/landscape). Otherwise: field of view.
     """
     p = camera_calib_path(cfg)
     if getattr(cfg.intrinsics, "calibration_file", None) or not p.exists():
@@ -61,19 +61,19 @@ def phone_intrinsics(cfg, width: int, height: int) -> Intrinsics:
 
 @dataclass
 class ImuCalib:
-    """Paramètres IMU ↔ caméra utilisés par la pose fusionnée."""
+    """IMU ↔ camera parameters used by the fused pose."""
 
     R_cam_imu: np.ndarray
     gyro_bias: np.ndarray
     time_offset_s: float
     units_fix: float
-    source: str  # « calibration » ou « a priori »
-    R_cam_acc: np.ndarray | None = None  # None : même rotation que le gyroscope
+    source: str  # "calibration" or "prior"
+    R_cam_acc: np.ndarray | None = None  # None: same rotation as the gyroscope
     accel_sign: float = 1.0
 
 
 def load_imu_calib(cfg) -> ImuCalib:
-    """Calibration IMU de l'appareil, ou valeurs a priori de `body`."""
+    """IMU calibration of the device, or prior values from `body`."""
     prior = np.asarray(cfg.body.R_cam_imu, float)
     p = imu_calib_path(cfg)
     if not p.exists():

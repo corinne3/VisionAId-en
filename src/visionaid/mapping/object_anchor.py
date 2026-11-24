@@ -1,4 +1,4 @@
-"""Ancrage 3D de la cible : mesure (masque + profondeur), filtre de Kalman, mémoire."""
+"""3D anchoring of the target: measurement (mask + depth), Kalman filter, memory."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def measure_object(
     shrink: float,
     min_points: int,
 ) -> np.ndarray | None:
-    """Position caméra de l'objet = médiane des points 3D sous le masque érodé (ou boîte rétrécie)."""
+    """Camera position of the object = median of the 3D points under the eroded mask (or shrunk box)."""
     h, w = depth.shape
     if mask is not None and mask.sum() >= min_points:
         m = cv2.erode(mask.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
@@ -39,12 +39,12 @@ def measure_object(
     pts, _ = backproject(depth, K, 1, m, 0.1, 20.0)
     if len(pts) < min_points:
         return None
-    # profondeur : médiane ; x,y : centre du masque à cette profondeur
+    # depth: median; x,y: mask centre at this depth
     return np.median(pts, axis=0)
 
 
 class ObjectAnchor:
-    """Filtre de Kalman à position constante + états unknown/seen/remembered/stale."""
+    """Constant-position Kalman filter + unknown/seen/remembered/stale states."""
 
     def __init__(self, cfg_anchor) -> None:
         c = cfg_anchor
@@ -73,7 +73,7 @@ class ObjectAnchor:
     def update_world(
         self, z: np.ndarray, t: float, confidence: float = 1.0, range_m: float = 2.0
     ) -> bool:
-        """Mise à jour avec une mesure en repère monde ; bruit croissant avec la distance."""
+        """Update with a measurement in the world frame; noise growing with distance."""
         self.predict(t)
         R = np.eye(3) * self.r * max(range_m / 2.0, 0.5) ** 2 / max(confidence, 0.1)
         if self.x is None:
@@ -87,7 +87,7 @@ class ObjectAnchor:
                 self.n_rejected += 1
                 if self._reject_streak < 5:
                     return False
-                self.x, self.P = z.copy(), R.copy()  # l'objet a bougé : réinitialisation
+                self.x, self.P = z.copy(), R.copy()  # the object has moved: reset
             else:
                 Kg = self.P @ np.linalg.inv(S)
                 self.x = self.x + Kg @ innov

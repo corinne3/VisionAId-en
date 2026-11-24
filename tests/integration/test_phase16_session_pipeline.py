@@ -1,4 +1,4 @@
-"""Phase 16 (intégration) : pipeline offline et source temps réel sur une session téléphone."""
+"""Phase 16 (integration): offline pipeline and real-time source on a phone session."""
 
 import time
 
@@ -47,7 +47,7 @@ def make_session(path, n=45):
         path,
         imgs,
         fps=15,
-        # caméra inclinée de 20° vers le bas, comme `scene_depth` (gravité cohérente avec la scène)
+        # camera tilted 20° downwards, like `scene_depth` (gravity consistent with the scene)
         imu_fn=lambda t: (
             np.zeros(3),
             9.81 * np.array([0.0, np.cos(np.radians(20)), np.sin(np.radians(20))]),
@@ -68,7 +68,7 @@ def test_offline_pipeline_on_session(tmp_path):
             "video.width": W,
             "paths.cache": str(tmp_path / "cache"),
             "depth.scale_factor": 1.0,
-            "phone.calib_dir": str(tmp_path / "calib"),  # sans la calibration de l'iPhone réel
+            "phone.calib_dir": str(tmp_path / "calib"),  # without the real iPhone calibration
         }
     )
     K = from_hfov(W, H, cfg.intrinsics.hfov_deg).K
@@ -100,7 +100,7 @@ def test_session_replay_block_emits_frames_and_imu(tmp_path):
     raw["video"]["width"] = W
     raw["_t0_wall"] = time.time()
     blk = SessionReplayBlock(raw)
-    outs = [blk.process({}) for _ in range(14)]  # 12 images puis rebouclage
+    outs = [blk.process({}) for _ in range(14)]  # 12 images then loop
     frames = [o["frame"] for o in outs if o]
     assert frames[0].t == pytest.approx(0.0) and frames[0].t_phone > 1e9
     assert all(b.frame_idx > a.frame_idx for a, b in zip(frames, frames[1:], strict=False))
@@ -108,6 +108,6 @@ def test_session_replay_block_emits_frames_and_imu(tmp_path):
     assert blk.loops == 1
     imus = [o["imu"] for o in outs if o and "imu" in o]
     assert len(imus) >= 10
-    for o in outs[1:11]:  # IMU ramenée dans le même repère de temps que l'image
+    for o in outs[1:11]:  # IMU brought into the same time frame as the image
         assert o["imu"].t[-1] <= o["frame"].t + 1e-9
         assert o["frame"].t - o["imu"].t[-1] < 1 / 60 + 1e-6

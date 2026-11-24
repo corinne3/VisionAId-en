@@ -1,4 +1,4 @@
-"""Synchronisation d'horloge téléphone ↔ PC par ping/pong (style NTP simplifié)."""
+"""Phone ↔ computer clock synchronisation by ping/pong (simplified NTP style)."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ from visionaid.bus.messages import ClockSync
 
 
 class ClockEstimator:
-    """Estime `offset` tel que t_pc ≈ t_phone + offset.
+    """Estimates `offset` such that t_pc ≈ t_phone + offset.
 
-    Chaque ping `id` donne d = t_pc_reçu − t_phone_envoyé = offset + délai aller. Le téléphone
-    mesure le RTT de cet échange au retour du pong et le renvoie avec le ping suivant
-    (`prev_id`, `rtt`). On apparie d et RTT du **même** échange ; sur une fenêtre glissante, on
-    retient l'échange de RTT minimal : offset = d − RTT/2, incertitude RTT/2. Sans RTT apparié,
-    offset = min(d) (biaisé du délai aller minimal), avec une incertitude par défaut.
+    Each ping `id` gives d = t_pc_received − t_phone_sent = offset + outbound delay. The phone
+    measures the RTT of this exchange when the pong returns and sends it back with the next ping
+    (`prev_id`, `rtt`). d and RTT of the **same** exchange are matched; over a sliding window, the
+    exchange with minimal RTT is kept: offset = d − RTT/2, uncertainty RTT/2. Without a matched RTT,
+    offset = min(d) (biased by the minimal outbound delay), with a default uncertainty.
     """
 
     def __init__(self, window: int = 30, default_uncertainty: float = 0.05) -> None:
@@ -25,7 +25,7 @@ class ClockEstimator:
         self.default_uncertainty = default_uncertainty
 
     def ping(self, ping_id, t_phone: float, t_pc: float) -> None:
-        """Enregistre la réception d'un ping."""
+        """Records the reception of a ping."""
         d = t_pc - t_phone
         self.raw.append((t_pc, d))
         if ping_id is not None:
@@ -34,7 +34,7 @@ class ClockEstimator:
                 self.pending.popitem(last=False)
 
     def rtt(self, ping_id, rtt: float | None) -> None:
-        """Associe le RTT mesuré par le téléphone au ping `ping_id`."""
+        """Associates the RTT measured by the phone with the ping `ping_id`."""
         if ping_id is None or rtt is None or not math.isfinite(rtt) or rtt < 0:
             return
         hit = self.pending.pop(ping_id, None)
@@ -42,7 +42,7 @@ class ClockEstimator:
             self.samples.append((hit[0], hit[1], float(rtt)))
 
     def estimate(self, t: float = 0.0) -> ClockSync:
-        """Estimation à partir des échanges de la fenêtre."""
+        """Estimate from the exchanges in the window."""
         if self.samples:
             _, d, r = min(self.samples, key=lambda s: s[2])
             return ClockSync(t, d - r / 2.0, r / 2.0, r)

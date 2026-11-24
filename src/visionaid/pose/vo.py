@@ -1,4 +1,4 @@
-"""Odométrie visuelle RGB-D : ORB + appariement + PnP RANSAC sur keyframes, repli Open3D."""
+"""RGB-D visual odometry: ORB + matching + RANSAC PnP on keyframes, Open3D fallback."""
 
 from __future__ import annotations
 
@@ -16,25 +16,25 @@ log = get_logger("vo")
 
 @dataclass
 class Observation:
-    """Points d'intérêt d'une image : pixels, descripteurs ORB, profondeur échantillonnée."""
+    """Keypoints of an image: pixels, ORB descriptors, sampled depth."""
 
     uv: np.ndarray  # (N,2) float
     desc: np.ndarray  # (N,32) uint8
-    depth: np.ndarray  # (N,) float (0 si invalide)
-    image: np.ndarray | None = None  # niveaux de gris (repli Open3D)
+    depth: np.ndarray  # (N,) float (0 if invalid)
+    image: np.ndarray | None = None  # grey levels (Open3D fallback)
     depth_map: np.ndarray | None = None
 
 
 @dataclass
 class Keyframe:
     obs: Observation
-    pts3d: np.ndarray  # (N,3) repère caméra de la keyframe (nan si profondeur invalide)
+    pts3d: np.ndarray  # (N,3) keyframe camera frame (nan if invalid depth)
     T_world_kf: np.ndarray
     frame_idx: int
 
 
 class RGBDOdometry:
-    """Odométrie par keyframes. `step(obs, K, t, idx)` → Pose (T_world_cam)."""
+    """Keyframe odometry. `step(obs, K, t, idx)` → Pose (T_world_cam)."""
 
     def __init__(self, cfg_vo) -> None:
         c = cfg_vo
@@ -56,7 +56,7 @@ class RGBDOdometry:
         self.matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
         self.kf: Keyframe | None = None
         self.T_world_cam = np.eye(4)
-        self.T_kf_cur_prev = np.eye(4)  # dernière pose relative (graine PnP)
+        self.T_kf_cur_prev = np.eye(4)  # last relative pose (PnP seed)
         self.lost_streak = 0
         self.n_lost = 0
         self.n_frames = 0
@@ -64,7 +64,7 @@ class RGBDOdometry:
 
     # ------------------------------------------------------------------ images
     def observe(self, image: np.ndarray, depth: np.ndarray) -> Observation:
-        """Détecte les ORB et échantillonne la profondeur."""
+        """Detects ORB features and samples the depth."""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
         kps, desc = self.orb.detectAndCompute(gray, None)
         if desc is None or len(kps) == 0:
@@ -76,7 +76,7 @@ class RGBDOdometry:
         vi = np.clip(np.round(uv[:, 1]).astype(int), 0, depth.shape[0] - 1)
         return Observation(uv, desc, depth[vi, ui].astype(np.float64), gray, depth)
 
-    # ------------------------------------------------------------- cœur PnP
+    # ------------------------------------------------------------- PnP core
     def _kf_from(self, obs: Observation, K: np.ndarray, T_world: np.ndarray, idx: int) -> Keyframe:
         pts = np.full((len(obs.uv), 3), np.nan)
         ok = (obs.depth > self.min_d) & (obs.depth < self.max_d)
@@ -98,7 +98,7 @@ class RGBDOdometry:
     def _pnp(
         self, kf: Keyframe, obs: Observation, K: np.ndarray
     ) -> tuple[np.ndarray | None, int, float]:
-        """T_cur_kf par PnP RANSAC + raffinement LM. Retourne (T, n_inliers, erreur reproj médiane)."""
+        """T_cur_kf by RANSAC PnP + LM refinement. Returns (T, n_inliers, median reprojection error)."""
         matches = self._match(kf.obs.desc, obs.desc)
         if len(matches) < self.min_inliers:
             return None, len(matches), np.inf
@@ -109,7 +109,7 @@ class RGBDOdometry:
         if ok.sum() < self.min_inliers:
             return None, int(ok.sum()), np.inf
         P, uv = P[ok], obs.uv[ti[ok]]
-        # RANSAC à échantillon minimal (AP3P, 4 points) : robuste à ~50 % d'appariements faux
+        # minimal-sample RANSAC (AP3P, 4 points): robust to ~50% wrong matches
         good, rvec, tvec, inl = cv2.solvePnPRansac(
             P,
             uv,
@@ -138,7 +138,7 @@ class RGBDOdometry:
             )
             if not good or inl is None or len(inl) < self.min_inliers:
                 return None, 0 if inl is None else len(inl), np.inf
-        # ré-estimation de l'ensemble d'inliers avec la pose raffinée
+        # re-estimation of the inlier set with the refined pose
         rvec, tvec = cv2.solvePnPRefineLM(P[inl.ravel()], uv[inl.ravel()], K, None, rvec, tvec)
         proj, _ = cv2.projectPoints(P, rvec, tvec, K, None)
         inl = np.nonzero(np.linalg.norm(proj.reshape(-1, 2) - uv, axis=1) < self.reproj)[0]
@@ -156,9 +156,9 @@ class RGBDOdometry:
         return make_T(R, tvec), len(inl), err
 
     def _refine_symmetric(self, P_kf, uv_cur, uv_kf, z_cur, K, rvec, tvec):
-        """Raffinement symétrique : reprojection kf→courante et courante→kf (profondeur courante).
+        """Symmetric refinement: reprojection kf→current and current→kf (current depth).
 
-        Utilise l'information des deux cartes de profondeur ; perte de Huber (1 px).
+        Uses the information of both depth maps; Huber loss (1 px).
         """
         from scipy.optimize import least_squares
 
@@ -195,7 +195,7 @@ class RGBDOdometry:
     def _open3d(
         self, kf: Keyframe, obs: Observation, K: np.ndarray
     ) -> tuple[np.ndarray | None, int, float]:
-        """Repli : odométrie RGB-D dense d'Open3D (T_cur_kf)."""
+        """Fallback: Open3D dense RGB-D odometry (T_cur_kf)."""
         if (
             kf.obs.image is None
             or obs.image is None
@@ -230,10 +230,10 @@ class RGBDOdometry:
         )
         if not ok:
             return None, 0, np.inf
-        # compute_rgbd_odometry(source=cur, target=kf) donne T qui amène cur → kf : T_kf_cur
+        # compute_rgbd_odometry(source=cur, target=kf) gives T bringing cur → kf: T_kf_cur
         return inv_T(np.asarray(T_kf_cur)), self.min_inliers, 0.0
 
-    # ----------------------------------------------------------------- étape
+    # ----------------------------------------------------------------- step
     def step(self, obs: Observation, K: np.ndarray, t: float = 0.0, frame_idx: int = 0) -> Pose:
         self.n_frames += 1
         if self.kf is None:
@@ -274,7 +274,7 @@ class RGBDOdometry:
         return Pose(t, frame_idx, self.T_world_cam.copy(), "ok", int(n_in), float(err), bool(is_kf))
 
     def _lost(self, t: float, idx: int, obs: Observation, K: np.ndarray) -> Pose:
-        """Perte de suivi : pose conservée ; après 2 échecs, réinitialisation sur une nouvelle keyframe."""
+        """Tracking loss: pose kept; after 2 failures, reset on a new keyframe."""
         self.lost_streak += 1
         self.n_lost += 1
         if (

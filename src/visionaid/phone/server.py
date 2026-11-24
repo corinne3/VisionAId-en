@@ -1,8 +1,8 @@
-"""Serveur d'acquisition (aiohttp) : page web HTTPS + WebSocket, publication et enregistrement.
+"""Acquisition server (aiohttp): HTTPS web page + WebSocket, publishing and recording.
 
-Le serveur tourne dans son propre thread (boucle asyncio dédiée) pour pouvoir être piloté depuis
-du code synchrone (bloc du bus, applications, tests). Les données reçues sont transmises par
-rappels (`on_frame`, `on_imu`, `on_clock`) appelés dans le thread du serveur.
+The server runs in its own thread (dedicated asyncio loop) so that it can be driven from
+synchronous code (bus block, applications, tests). The received data is passed on through
+callbacks (`on_frame`, `on_imu`, `on_clock`) called in the server thread.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ WEB_DIR = Path(__file__).parent / "web"
 
 @dataclass
 class ServerStats:
-    """Compteurs du serveur (lus depuis un autre thread : valeurs simples uniquement)."""
+    """Server counters (read from another thread: simple values only)."""
 
     n_connections: int = 0
     n_frames: int = 0
@@ -59,7 +59,7 @@ class ServerStats:
     last_hello: dict = field(default_factory=dict)
 
     def rate(self, times: deque, window: float = 2.0) -> float:
-        """Cadence (Hz) sur les `window` dernières secondes."""
+        """Rate (Hz) over the last `window` seconds."""
         now = time.time()
         n = sum(1 for t in list(times) if now - t <= window)
         return n / window
@@ -81,7 +81,7 @@ class ServerStats:
 
 
 class PhoneServer:
-    """Serveur HTTPS + WebSocket pour un téléphone à la fois."""
+    """HTTPS + WebSocket server for one phone at a time."""
 
     def __init__(
         self,
@@ -99,7 +99,7 @@ class PhoneServer:
         self.cfg = cfg
         pc = cfg.phone
         h = host if host is not None else pc.host
-        # « auto » / vide : toutes les interfaces en IPv4 ET IPv6 (réseaux IPv6 seul)
+        # "auto" / empty: all interfaces in IPv4 AND IPv6 (IPv6-only networks)
         self.host = None if h in (None, "", "auto", "0.0.0.0", "::") else str(h)
         self.https_port = int(https_port if https_port is not None else pc.https_port)
         self.http_port = int(http_port if http_port is not None else pc.http_port)
@@ -107,7 +107,7 @@ class PhoneServer:
         self.on_imu = on_imu
         self.on_clock = on_clock
         self.on_command = on_command
-        self.voice: dict | None = None  # réglages voix envoyés au téléphone (welcome)
+        self.voice: dict | None = None  # voice settings sent to the phone (welcome)
         self.record_name = record
         self.meta = dict(meta or {})
         self.recorder: SessionRecorder | None = None
@@ -123,25 +123,25 @@ class PhoneServer:
         self._gyro_units = "deg/s"
         self._error: BaseException | None = None
 
-    # ------------------------------------------------------------------ cycle de vie
+    # ------------------------------------------------------------------ life cycle
     def start(self, timeout: float = 10.0) -> PhoneServer:
-        """Démarre le serveur dans un thread ; attend qu'il écoute."""
+        """Starts the server in a thread; waits until it listens."""
         self._thread = threading.Thread(target=self._run, name="phone-server", daemon=True)
         self._thread.start()
         if not self._ready.wait(timeout):
-            raise TimeoutError("le serveur téléphone n'a pas démarré")
+            raise TimeoutError("the phone server did not start")
         if self._error is not None:
-            raise RuntimeError(f"échec du démarrage du serveur : {self._error}")
+            raise RuntimeError(f"server start failed: {self._error}")
         return self
 
     def stop(self, timeout: float = 5.0) -> None:
-        """Arrête le serveur et ferme l'enregistrement."""
+        """Stops the server and closes the recording."""
         if self._loop is not None and not self._stopped.is_set():
             fut = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
             try:
                 fut.result(timeout)
-            except Exception as e:  # arrêt best effort
-                log.warning("Arrêt du serveur incomplet : %s", e)
+            except Exception as e:  # best-effort stop
+                log.warning("Incomplete server stop: %s", e)
             self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread is not None:
             self._thread.join(timeout)
@@ -183,7 +183,7 @@ class PhoneServer:
             }
             meta.update(self.meta)
             self.recorder = SessionRecorder(d, meta)
-            log.info("Enregistrement de la session dans %s", d)
+            log.info("Recording the session in %s", d)
         app = web.Application(client_max_size=16 * 1024 * 1024)
         app.router.add_get("/", self._index)
         app.router.add_get("/ws", self._websocket)
@@ -199,7 +199,7 @@ class PhoneServer:
         self._ssl_ctx = ssl_ctx
         await web.TCPSite(self._runner, self.host, self.https_port, ssl_context=ssl_ctx).start()
         self._cert_task = asyncio.create_task(self._cert_watch())
-        if self.http_port > 0:  # HTTP simple : uniquement pour télécharger ca.crt
+        if self.http_port > 0:  # plain HTTP: only for downloading ca.crt
             plain = web.Application()
             plain.router.add_get("/", self._ca_page)
             plain.router.add_get("/ca.crt", self._ca)
@@ -210,8 +210,8 @@ class PhoneServer:
             self._plain_runner = None
 
     async def _cert_watch(self, period_s: float = 3.0) -> None:
-        """Changement de réseau (Wi-Fi ↔ partage de connexion) : réémet le certificat pour la
-        nouvelle adresse IP et le recharge à chaud (les nouvelles connexions l'utilisent)."""
+        """Network change (Wi-Fi ↔ hotspot): re-issues the certificate for the
+        new IP address and reloads it on the fly (new connections use it)."""
         from visionaid.phone.certs import host_names, local_ips, server_cert_covers
 
         while True:
@@ -225,11 +225,11 @@ class PhoneServer:
                     str(self.certs.server_cert), str(self.certs.server_key)
                 )
                 log.warning(
-                    "Adresse réseau changée : certificat réémis. Nouvelle adresse : %s",
+                    "Network address changed: certificate re-issued. New address: %s",
                     ", ".join(self.urls()),
                 )
-            except Exception as e:  # ne jamais arrêter le serveur pour ça
-                log.warning("Vérification du certificat impossible : %s", e)
+            except Exception as e:  # never stop the server for this
+                log.warning("Certificate check impossible: %s", e)
 
     async def _shutdown(self) -> None:
         if getattr(self, "_cert_task", None) is not None:
@@ -258,13 +258,13 @@ class PhoneServer:
     async def _ca_page(self, request: web.Request) -> web.Response:
         html = (
             "<!doctype html><meta charset=utf-8><meta name=viewport "
-            "content='width=device-width,initial-scale=1'><title>VisionAId — certificat</title>"
+            "content='width=device-width,initial-scale=1'><title>VisionAId — certificate</title>"
             "<body style='font:18px system-ui;padding:16px'><h1>VisionAId</h1>"
-            "<p>1. <a href='/ca.crt'>Télécharger le certificat</a>, puis l'installer "
-            "(Réglages → Général → VPN et gestion de l'appareil).</p>"
-            "<p>2. Activer la confiance totale : Réglages → Général → Informations → "
-            "Réglages des certificats.</p>"
-            f"<p>3. Ouvrir <b>https://{_url_host(request.url.host or 'localhost')}:"
+            "<p>1. <a href='/ca.crt'>Download the certificate</a>, then install it "
+            "(Settings → General → VPN &amp; Device Management).</p>"
+            "<p>2. Turn on full trust: Settings → General → About → "
+            "Certificate Trust Settings.</p>"
+            f"<p>3. Open <b>https://{_url_host(request.url.host or 'localhost')}:"
             f"{self.https_port}/</b>.</p>"
         )
         return web.Response(text=html, content_type="text/html")
@@ -281,11 +281,11 @@ class PhoneServer:
         ws = web.WebSocketResponse(heartbeat=5.0, max_msg_size=16 * 1024 * 1024)
         await ws.prepare(request)
         old, self._ws = self._ws, ws
-        if old is not None and not old.closed:  # un seul téléphone : le nouveau remplace l'ancien
-            await self._send(old, {"type": "error", "message": "remplacé par une autre connexion"})
+        if old is not None and not old.closed:  # a single phone: the new one replaces the old one
+            await self._send(old, {"type": "error", "message": "replaced by another connection"})
             await old.close()
         self.stats.n_connections += 1
-        log.info("Téléphone connecté depuis %s", request.remote)
+        log.info("Phone connected from %s", request.remote)
         greeted = False
         stats_task = asyncio.create_task(self._stats_loop(ws))
         try:
@@ -310,17 +310,17 @@ class PhoneServer:
                     await self._on_text(ws, obj)
                 elif msg.type == WSMsgType.BINARY:
                     if not greeted:
-                        await self._send(ws, {"type": "error", "message": "« hello » attendu"})
+                        await self._send(ws, {"type": "error", "message": "\"hello\" expected"})
                         await ws.close()
                         break
                     await self._on_binary(ws, msg.data)
                 elif msg.type == WSMsgType.ERROR:
-                    log.warning("Erreur WebSocket : %s", ws.exception())
+                    log.warning("WebSocket error: %s", ws.exception())
         finally:
             stats_task.cancel()
             if self._ws is ws:
                 self._ws = None
-            log.info("Téléphone déconnecté")
+            log.info("Phone disconnected")
         return ws
 
     def _sounds_dir(self) -> Path | None:
@@ -329,7 +329,7 @@ class PhoneServer:
         return d if d is not None and d.is_dir() else None
 
     def _audio_settings(self) -> dict | None:
-        """Réglages du rendu sonore du téléphone (section `audio` de la config)."""
+        """Sound rendering settings of the phone (`audio` section of the config)."""
         a = getattr(self.cfg, "audio", None)
         if a is None or self._sounds_dir() is None:
             return None
@@ -345,7 +345,7 @@ class PhoneServer:
         }
 
     def send_sound(self, cmd) -> bool:
-        """Envoie une `SoundCommand` au téléphone (appelable depuis n'importe quel thread)."""
+        """Sends a `SoundCommand` to the phone (callable from any thread)."""
         ws, loop = self._ws, self._loop
         if ws is None or ws.closed or loop is None:
             return False
@@ -367,7 +367,7 @@ class PhoneServer:
         return True
 
     def send_json(self, obj: dict) -> bool:
-        """Envoie un message JSON au téléphone (appelable depuis n'importe quel thread)."""
+        """Sends a JSON message to the phone (callable from any thread)."""
         ws, loop = self._ws, self._loop
         if ws is None or ws.closed or loop is None:
             return False
@@ -375,7 +375,7 @@ class PhoneServer:
         return True
 
     def send_speech(self, sid: int, text: str, duck: bool = False) -> bool:
-        """Phrase à dire par le téléphone (synthèse vocale du navigateur, dans le casque)."""
+        """Sentence to be spoken by the phone (browser speech synthesis, in the headset)."""
         ok = self.send_json({"type": "speech", "id": int(sid), "text": text, "duck": bool(duck)})
         if ok:
             self.stats.n_speech += 1
@@ -462,7 +462,7 @@ class PhoneServer:
             pkt = unpack_frame(data)
         except ProtocolError as e:
             self.stats.n_bad += 1
-            log.debug("Image rejetée : %s", e)
+            log.debug("Image rejected: %s", e)
             return
         if self.recorder is not None:
             self.recorder.frame(pkt.seq, pkt.t_phone, t_recv, pkt.w, pkt.h, pkt.jpeg, pkt.calib)
@@ -485,8 +485,8 @@ class PhoneServer:
                 K = self._K(w, h)
                 self.on_frame(Frame(pkt.t_phone, pkt.seq, img, K, pkt.t_phone, t_recv))
         finally:
-            # acquittement après ingestion : le téléphone ne va jamais plus vite que le PC,
-            # et l'image suivante est saisie au moment où le PC est prêt (pas de file d'attente)
+            # acknowledgement after ingestion: the phone never goes faster than the computer,
+            # and the next image is grabbed when the computer is ready (no queue)
             await self._send(ws, {"type": "ack", "seq": pkt.seq})
 
     async def _stats_loop(self, ws: web.WebSocketResponse) -> None:
@@ -509,14 +509,14 @@ class PhoneServer:
 
     # ------------------------------------------------------------------ utilitaires
     def _K(self, w: int, h: int) -> np.ndarray:
-        """Intrinsèques (calibration de l'appareil si présente), mises en cache par taille."""
+        """Intrinsics (device calibration if present), cached by size."""
         cache = self.__dict__.setdefault("_K_cache", {})
         if (w, h) not in cache:
             cache[(w, h)] = phone_intrinsics(self.cfg, w, h).K
         return cache[(w, h)]
 
     def urls(self) -> list[str]:
-        """URLs HTTPS à ouvrir sur le téléphone : nom Bonjour (.local) d'abord, puis adresses."""
+        """HTTPS URLs to open on the phone: Bonjour name (.local) first, then addresses."""
         from visionaid.phone.certs import host_names, reachable_ips, url_host
 
         hosts = [n for n in host_names() if n.endswith(".local")]
@@ -540,7 +540,7 @@ def _url_host(h: str) -> str:
 
 
 def decode_jpeg(jpeg: bytes, max_width: int) -> np.ndarray | None:
-    """JPEG → image BGR, réduite à `max_width` au plus (jamais agrandie)."""
+    """JPEG → BGR image, reduced to `max_width` at most (never enlarged)."""
     img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         return None

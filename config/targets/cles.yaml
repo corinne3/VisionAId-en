@@ -1,7 +1,7 @@
-# Fiche cible : trousseau de clés (petit, métallique, forme variable : objet difficile)
+# Target card: bunch of keys (small, metallic, variable shape: difficult object)
 name: cles
 label: mes clés
-spoken: les clés          # nom prononcé dans les annonces
+spoken: les clés          # name spoken in the announcements
 plural: true
 phrases:
   - où sont mes clés
@@ -14,16 +14,16 @@ phrases:
 overrides:
   target:
     name: cles
-    height_m: null          # pas de contrôle d'échelle par la taille de l'objet
+    height_m: null          # no scale check from the size of the object
   detector:
     text_prompts: ["keys", "bunch of keys", "key ring", "keychain"]
     negative_prompts: ["phone", "remote control", "wallet", "pen", "coin", "bag", "cup"]
-    conf: 0.08              # objet petit : seuil de détection abaissé, la ReID filtre ensuite
+    conf: 0.08              # small object: lowered detection threshold, ReID filters afterwards
   paths:
     ref_glob: "cles_*.jpg"
   reid:
-    color_model: none       # pas de couleur distinctive fiable (métal, reflets)
+    color_model: none       # no reliable distinctive colour (metal, reflections)
     w_embed: 1.0
     w_color: 0.0
     threshold_file: config/reid_threshold_cles.yaml
-    textonly_conf: 0.25     # sans photo de référence : confiance minimale de détection
+    textonly_conf: 0.25     # without a reference photo: minimum detection confidence

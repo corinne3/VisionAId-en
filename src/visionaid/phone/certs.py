@@ -1,8 +1,8 @@
-"""Autorité de certification locale et certificat serveur (HTTPS exigé par Safari pour caméra et capteurs).
+"""Local certificate authority and server certificate (HTTPS required by Safari for camera and sensors).
 
-Tout est généré sur le PC, sans service externe. Le certificat racine (`ca.crt`) s'installe une fois
-sur le téléphone (voir `docs/phone_setup.md`) ; le certificat serveur est régénéré automatiquement
-si l'adresse IP locale change.
+Everything is generated on the computer, without an external service. The root certificate (`ca.crt`) is installed once
+on the phone (see `docs/phone_setup.md`); the server certificate is regenerated automatically
+if the local IP address changes.
 """
 
 from __future__ import annotations
@@ -20,13 +20,13 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 CA_NAME = "VisionAId CA locale"
-SERVER_DAYS = 397  # iOS refuse les certificats serveur de plus de 398 jours
+SERVER_DAYS = 397  # iOS refuses server certificates valid for more than 398 days
 CA_DAYS = 3650
 
 
 @dataclass
 class CertPaths:
-    """Chemins des fichiers générés."""
+    """Paths of the generated files."""
 
     ca_cert: Path
     ca_key: Path
@@ -35,7 +35,7 @@ class CertPaths:
 
 
 def _ifconfig_ipv6() -> set[str]:
-    """Adresses IPv6 globales des interfaces (macOS/BSD `ifconfig`, Linux `ip`), sans lien-local."""
+    """Global IPv6 addresses of the interfaces (macOS/BSD `ifconfig`, Linux `ip`), without link-local."""
     import subprocess
 
     out = ""
@@ -60,14 +60,14 @@ def _ifconfig_ipv6() -> set[str]:
 
 
 def local_ips() -> list[str]:
-    """Adresses locales joignables par le téléphone : IPv4 et IPv6 (réseaux IPv6 seul,
-    ex. partage de connexion 5G où le Mac n'a qu'une IPv4 de traduction 192.0.0.x)."""
+    """Local addresses reachable by the phone: IPv4 and IPv6 (IPv6-only networks,
+    e.g. 5G hotspot where the Mac only has a translation IPv4 192.0.0.x)."""
     ips: set[str] = {"127.0.0.1"}
     for fam, probe in (
         (socket.AF_INET, "10.255.255.255"),
         (socket.AF_INET6, "2001:4860:4860::8888"),
     ):
-        try:  # interface de sortie par défaut, sans envoyer de paquet
+        try:  # default outgoing interface, without sending a packet
             s = socket.socket(fam, socket.SOCK_DGRAM)
             try:
                 s.connect((probe, 1))
@@ -86,7 +86,7 @@ def local_ips() -> list[str]:
 
 
 def reachable_ips() -> list[str]:
-    """Adresses à proposer au téléphone : sans boucle locale ni IPv4 de traduction (192.0.0.0/29)."""
+    """Addresses to offer to the phone: without loopback or translation IPv4 (192.0.0.0/29)."""
     out = []
     for a in local_ips():
         ip = ipaddress.ip_address(a)
@@ -97,12 +97,12 @@ def reachable_ips() -> list[str]:
 
 
 def url_host(a: str) -> str:
-    """Hôte d'URL : crochets pour une IPv6."""
+    """URL host: brackets for an IPv6."""
     return f"[{a}]" if ":" in a else a
 
 
 def host_names() -> list[str]:
-    """Noms DNS couverts par le certificat serveur."""
+    """DNS names covered by the server certificate."""
     h = socket.gethostname().split(".")[0]
     names = {"localhost", h, f"{h}.local"}
     return sorted(n for n in names if n)
@@ -128,7 +128,7 @@ def _now() -> dt.datetime:
 
 
 def make_ca(paths: CertPaths) -> None:
-    """Crée l'autorité de certification locale."""
+    """Creates the local certificate authority."""
     key = _key()
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, CA_NAME)])
     now = _now()
@@ -163,7 +163,7 @@ def make_ca(paths: CertPaths) -> None:
 
 
 def make_server_cert(paths: CertPaths, names: list[str], ips: list[str]) -> None:
-    """Émet le certificat serveur signé par l'autorité locale."""
+    """Issues the server certificate signed by the local authority."""
     ca_key = serialization.load_pem_private_key(paths.ca_key.read_bytes(), None)
     ca_cert = x509.load_pem_x509_certificate(paths.ca_cert.read_bytes())
     key = _key()
@@ -204,7 +204,7 @@ def make_server_cert(paths: CertPaths, names: list[str], ips: list[str]) -> None
 
 
 def server_cert_covers(paths: CertPaths, names: list[str], ips: list[str]) -> bool:
-    """Vrai si le certificat serveur existe, n'expire pas sous 7 jours et couvre noms et IP."""
+    """True if the server certificate exists, does not expire within 7 days and covers names and IPs."""
     if not paths.server_cert.exists() or not paths.server_key.exists():
         return False
     cert = x509.load_pem_x509_certificate(paths.server_cert.read_bytes())
@@ -219,7 +219,7 @@ def server_cert_covers(paths: CertPaths, names: list[str], ips: list[str]) -> bo
 def ensure_certs(
     directory: str | Path, names: list[str] | None = None, ips: list[str] | None = None
 ) -> CertPaths:
-    """Crée l'autorité si besoin et (ré)émet le certificat serveur s'il ne couvre plus l'hôte."""
+    """Creates the authority if needed and (re)issues the server certificate if it no longer covers the host."""
     d = Path(directory)
     d.mkdir(parents=True, exist_ok=True)
     paths = CertPaths(d / "ca.crt", d / "ca.key", d / "server.crt", d / "server.key")
@@ -235,13 +235,13 @@ def ensure_certs(
 
 
 def server_ssl_context(paths: CertPaths) -> ssl.SSLContext:
-    """Contexte TLS côté serveur."""
+    """Server-side TLS context."""
     ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ctx.load_cert_chain(str(paths.server_cert), str(paths.server_key))
     return ctx
 
 
 def client_ssl_context(paths: CertPaths) -> ssl.SSLContext:
-    """Contexte TLS d'un client qui fait confiance à l'autorité locale (faux téléphone, tests)."""
+    """TLS context of a client that trusts the local authority (fake phone, tests)."""
     ctx = ssl.create_default_context(cafile=str(paths.ca_cert))
     return ctx

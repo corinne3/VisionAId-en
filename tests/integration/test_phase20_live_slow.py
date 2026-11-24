@@ -1,4 +1,4 @@
-"""Phase 20 (lent) : faux téléphone rejouant la vraie vidéo, modèles réels ; session réelle."""
+"""Phase 20 (slow): fake phone replaying the real video, real models; real session."""
 
 import socket
 
@@ -31,9 +31,9 @@ def test_fake_phone_video_real_models(video_path, tmp_path):
     assert s["nodes_alive_at_end"] == s["n_nodes"]
     assert s["stop_time_s"] < 10
     p = s["path"]
-    assert p["n_valid_paths"] > 0, "aucun chemin valide (gourde jamais confirmée ?)"
+    assert p["n_valid_paths"] > 0, "no valid path (bottle never confirmed?)"
     assert p["valid_path_hz"] is not None and p["valid_path_hz"] >= 2.0
-    # objectif de latence consigné, non bloquant (voir DECISIONS / rapport)
+    # latency target recorded, not blocking (see DECISIONS / report)
     update_report(
         "live_latency_check",
         {"p95_ms": p["e2e_capture_to_path_ms_p95"], "target_ms": 700},
@@ -47,10 +47,10 @@ def test_session_gourde_replay_live(tmp_path):
 
     ss = [p for p in list_sessions(resolve_path(load_config().session.dir)) if "gourde" in p.name]
     if not ss:
-        pytest.skip("Aucune session « gourde_piece » (voir docs/checkpoint_enregistrements.md)")
+        pytest.skip("No \"gourde_piece\" session (see docs/checkpoint_enregistrements.md)")
     raw = load_raw(overrides={"target.query": "où est ma gourde"})
     s = run(60.0, raw, session=str(ss[-1]), rerun="file", warmup_s=30.0)
     update_report("live_session_gourde", s)
     assert s["nodes_alive_at_end"] == s["n_nodes"]
-    assert s["path"]["object_states"].get("seen", 0) > 0, "gourde jamais confirmée"
+    assert s["path"]["object_states"].get("seen", 0) > 0, "bottle never confirmed"
     assert s["path"]["n_valid_paths"] > 0

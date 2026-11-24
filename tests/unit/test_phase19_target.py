@@ -1,4 +1,4 @@
-"""Phase 19 : prompt fixe → fiche cible, ReID générique (sans couleur, sans photo)."""
+"""Phase 19: fixed prompt → target card, generic ReID (without colour, without photo)."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def test_config_for_keys_target():
     assert cfg.reid.color_model == "none" and cfg.reid.w_color == 0.0
     assert cfg.paths.ref_glob == "cles_*.jpg"
     assert cfg.target.height_m is None
-    # les surcharges explicites priment sur la fiche
+    # explicit overrides take precedence over the card
     cfg2 = load_config(overrides={"target.query": "mes clés", "detector.conf": 0.3})
     assert cfg2.detector.conf == 0.3 and cfg2.target.name == "cles"
 

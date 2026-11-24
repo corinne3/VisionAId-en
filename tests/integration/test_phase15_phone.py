@@ -1,4 +1,4 @@
-"""Phase 15 (intégration) : faux téléphone → serveur HTTPS/WebSocket → rappels / session."""
+"""Phase 15 (integration): fake phone → HTTPS/WebSocket server → callbacks / session."""
 
 from __future__ import annotations
 
@@ -82,21 +82,21 @@ def test_fake_phone_stream_order_rate_and_clock(phone_cfg):
         summ = srv.summary()
     assert st.welcome.get("protocol") == 1 and not st.errors
     seqs = [f.frame_idx for f in col.frames]
-    assert len(seqs) == len(set(seqs)), "images en double"
-    assert seqs == sorted(seqs), "images dans le désordre"
+    assert len(seqs) == len(set(seqs)), "duplicate images"
+    assert seqs == sorted(seqs), "images out of order"
     assert len(col.frames) >= 0.9 * st.sent_frames
-    assert st.sent_frames >= 0.9 * 15 * 6 * 0.9  # cadence envoyée ≈ 15 img/s (marge de démarrage)
+    assert st.sent_frames >= 0.9 * 15 * 6 * 0.9  # sent rate ≈ 15 fps (start-up margin)
     f = col.frames[-1]
     assert f.image.ndim == 3 and f.K.shape == (3, 3)
     assert f.t_phone is not None and f.t_recv is not None and f.t == f.t_phone
-    # IMU : ~60 Hz, couvrant la durée
+    # IMU: ~60 Hz, covering the duration
     n_imu = sum(len(b) for b in col.imu)
     assert n_imu >= 0.9 * st.imu_samples and n_imu > 6 * 50
     assert all(np.all(np.abs(b.gyro) < 0.1) for b in col.imu)  # deg/s → rad/s converti
-    # horloge : téléphone = PC + 5 s  →  offset ≈ −5 s
-    assert col.clock, "aucune synchronisation d'horloge"
+    # clock: phone = computer + 5 s  →  offset ≈ −5 s
+    assert col.clock, "no clock synchronisation"
     assert abs(col.clock[-1].offset + 5.0) < 0.02
-    # âge des images (réception − saisie, horloge PC) : réseau local, aucun retard accumulé
+    # image age (reception − capture, computer clock): local network, no accumulated delay
     assert summ["frame_age_ms_p95"] < 2 * 1000 / 15
 
 
@@ -105,10 +105,10 @@ def test_slow_consumer_backpressure_no_accumulation(phone_cfg):
     with _server(phone_cfg, col) as srv:
         st = run_fake_phone(_phone(srv, fps=15), 4.0)
         summ = srv.summary()
-    assert st.skipped_frames > st.sent_frames  # le téléphone attend l'acquittement
+    assert st.skipped_frames > st.sent_frames  # the phone waits for the acknowledgement
     rate = len(col.frames) / 4.0
     assert rate < 8
-    # l'image reçue est toujours fraîche : âge < 2 périodes d'envoi
+    # the received image is always fresh: age < 2 sending periods
     assert summ["frame_age_ms_p95"] < 2 * 1000 / 15
 
 
@@ -150,12 +150,12 @@ def test_session_recording_complete(phone_cfg, tmp_path):
     assert len(imu) == meta["n_imu"] > 100
     t_f = [ln["t_phone"] for ln in lines]
     t_i = [s["t"] for s in imu]
-    assert t_i[0] <= t_f[0] + 0.2 and t_i[-1] >= t_f[-1] - 0.2  # l'IMU couvre les images
+    assert t_i[0] <= t_f[0] + 0.2 and t_i[-1] >= t_f[-1] - 0.2  # the IMU covers the images
     assert (d / "clock.jsonl").read_text().strip()
 
 
 def test_server_reachable_over_ipv6(tmp_path):
-    """Hôte « auto » : le serveur répond aussi en IPv6 (réseaux IPv6 seul)."""
+    """"auto" host: the server also answers over IPv6 (IPv6-only networks)."""
     import ssl
     import urllib.request
 
@@ -169,7 +169,7 @@ def test_server_reachable_over_ipv6(tmp_path):
     srv = PhoneServer(cfg, https_port=free_port(), http_port=0).start()
     try:
         ctx = ssl.create_default_context(cafile=str(srv.certs.ca_cert))
-        ctx.check_hostname = False  # ::1 n'est pas forcément dans le certificat de test
+        ctx.check_hostname = False  # ::1 is not necessarily in the test certificate
         for host in ("127.0.0.1", "[::1]"):
             with urllib.request.urlopen(
                 f"https://{host}:{srv.https_port}/", context=ctx, timeout=5

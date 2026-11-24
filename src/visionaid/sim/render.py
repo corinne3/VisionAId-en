@@ -1,4 +1,4 @@
-"""Rendu vidéo d'un épisode simulé (vérité terrain + carte connue + chemin + agent)."""
+"""Video rendering of a simulated episode (ground truth + known map + path + agent)."""
 
 from __future__ import annotations
 
@@ -30,9 +30,9 @@ def render_episode(
     occ_final: np.ndarray | None = None,
     captions: list[str] | None = None,
 ) -> Path:
-    """Écrit un MP4 : à gauche la vérité terrain, à droite la carte construite par l'agent.
+    """Writes an MP4: ground truth on the left, the map built by the agent on the right.
 
-    `captions` : une ligne de texte par image, affichée en bas (ex. le son joué)."""
+    `captions`: one line of text per image, shown at the bottom (e.g. the sound played)."""
     H, W = world.occ.shape
     gt_occ = world.occ if occ_final is None else occ_final
 
@@ -46,7 +46,7 @@ def render_episode(
         gt = np.full((H, W, 3), 255, np.uint8)
         gt[gt_occ] = (40, 40, 40)
         gt = cv2.resize(gt, (W * scale, H * scale), interpolation=cv2.INTER_NEAREST)
-        # carte connue, recadrée sur l'emprise du monde
+        # known map, cropped to the extent of the world
         km = np.full((H, W, 3), 150, np.uint8)
         oi = int(round((world.origin[1] - origin[1]) / world.res))
         oj = int(round((world.origin[0] - origin[0]) / world.res))

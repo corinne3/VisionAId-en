@@ -1,7 +1,7 @@
-"""Acquisition seule : démarre le serveur téléphone, affiche l'URL (QR code) et enregistre si demandé.
+"""Acquisition only: starts the phone server, shows the URL (QR code) and records if requested.
 
-Exemples :
-    uv run python -m visionaid.apps.run_phone                      # flux en direct, sans enregistrer
+Examples:
+    uv run python -m visionaid.apps.run_phone                      # live stream, without recording
     uv run python -m visionaid.apps.run_phone --record gourde_piece --target "où est ma gourde"
 """
 
@@ -19,7 +19,7 @@ log = get_logger("run_phone")
 
 
 def print_qr(url: str) -> None:
-    """Affiche un QR code de l'URL dans le terminal (généré localement)."""
+    """Shows a QR code of the URL in the terminal (generated locally)."""
     try:
         import qrcode
 
@@ -27,46 +27,46 @@ def print_qr(url: str) -> None:
         qr.add_data(url)
         qr.make(fit=True)
         qr.print_ascii(invert=True)
-    except Exception as e:  # terminal sans unicode, etc.
-        log.debug("QR code indisponible : %s", e)
+    except Exception as e:  # terminal without unicode, etc.
+        log.debug("QR code unavailable: %s", e)
 
 
 def main(argv=None) -> dict:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("--record", default=None, help="nom de la session à enregistrer")
-    ap.add_argument("--target", default=None, help="prompt fixe (consigné dans la session)")
-    ap.add_argument("--height", type=float, default=None, help="hauteur caméra mesurée (m ou cm)")
-    ap.add_argument("--notes", default="", help="notes libres de la session")
-    ap.add_argument("--duration", type=float, default=None, help="arrêt automatique (s)")
+    ap.add_argument("--record", default=None, help="name of the session to record")
+    ap.add_argument("--target", default=None, help="fixed prompt (recorded in the session)")
+    ap.add_argument("--height", type=float, default=None, help="measured camera height (m or cm)")
+    ap.add_argument("--notes", default="", help="free notes for the session")
+    ap.add_argument("--duration", type=float, default=None, help="automatic stop (s)")
     args = ap.parse_args(argv)
     overrides = {}
     if args.height:
         from visionaid.utils.config import length_to_m
 
-        overrides["body.camera_height_m"] = length_to_m(args.height, "hauteur caméra")
-    if args.target:  # vérifie dès maintenant que la cible est connue
+        overrides["body.camera_height_m"] = length_to_m(args.height, "camera height")
+    if args.target:  # check right now that the target is known
         overrides["target.query"] = args.target
     cfg = load_config(overrides=overrides)
     meta = {"target": args.target, "notes": args.notes}
     srv = PhoneServer(cfg, record=args.record, meta=meta).start()
     urls = srv.urls()
-    print("\n=== VisionAId : ouvrez sur le téléphone (même réseau Wi-Fi) ===")
+    print("\n=== VisionAId: open on the phone (same Wi-Fi network) ===")
     for u in urls:
         print("  ", u)
     print_qr(urls[0])
     if srv.http_port > 0:
         host = urls[0].split("//")[1].rsplit(":", 1)[0]
         print(
-            f"Certificat à installer une fois : http://{host}:{srv.http_port}/  (docs/phone_setup.md)"
+            f"Certificate to install once: http://{host}:{srv.http_port}/  (docs/phone_setup.md)"
         )
-    print("Ctrl+C pour arrêter.\n")
+    print("Ctrl+C to stop.\n")
     t0 = time.time()
     try:
         while args.duration is None or time.time() - t0 < args.duration:
             time.sleep(2.0)
             s = srv.stats
             log.info(
-                "images %d (%.1f/s) | IMU %d (%.0f Hz) | âge p50 %s ms",
+                "images %d (%.1f/s) | IMU %d (%.0f Hz) | age p50 %s ms",
                 s.n_frames,
                 s.rate(s.frame_times),
                 s.n_imu,

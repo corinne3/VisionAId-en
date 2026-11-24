@@ -63,7 +63,7 @@ def _rel(Ta, Tb):
 def check_pairs(Ts, poses):
     t_err, r_err = [], []
     T0inv = inv_T(Ts[0])
-    gt = [T0inv @ T for T in Ts]  # repère monde VO = première caméra
+    gt = [T0inv @ T for T in Ts]  # VO world frame = first camera
     for k in range(len(Ts) - 1):
         a, b = _rel(gt[k], gt[k + 1]), _rel(poses[k].T_world_cam, poses[k + 1].T_world_cam)
         d = np.linalg.norm(a[:3, 3])
@@ -73,7 +73,7 @@ def check_pairs(Ts, poses):
 
 
 def check_kf_pairs(Ts, poses):
-    """Erreur relative entre keyframes consécutives (baseline ≥ kf_trans_m), voir DECISIONS.md."""
+    """Relative error between consecutive keyframes (baseline ≥ kf_trans_m), see DECISIONS.md."""
     kfi = [k for k, p in enumerate(poses) if p.is_keyframe]
     te, re = [], []
     for a, b in zip(kfi[:-1], kfi[1:], strict=True):
@@ -92,7 +92,7 @@ def test_pairwise_accuracy():
     assert len(te) >= 5
     assert np.median(te) < 0.03
     assert re.max() < 1.0
-    # garde-fou image par image (pas de 3,4 cm : régime du bruit de mesure)
+    # frame-by-frame safeguard (3.4 cm step: measurement noise regime)
     t_err, r_err, _ = check_pairs(Ts, poses)
     assert np.median(t_err) < 0.15 and r_err.max() < 1.0
 

@@ -52,6 +52,10 @@ Phone (web page)                    PC (Python, multi-process real-time graph)
 - [docs/en/REPORT_PHASE2.md](docs/en/REPORT_PHASE2.md): the team's phase 2 report (phone → path), in English
 - [docs/en/DECISIONS.md](docs/en/DECISIONS.md): the team's full decision log (every technical choice and rejected alternative), in English
 - [docs/en/phone_setup.md](docs/en/phone_setup.md): iPhone setup and troubleshooting, in English
+- [docs/en/protocol.md](docs/en/protocol.md) and [docs/en/frames.md](docs/en/frames.md): phone ↔ computer protocol, geometric conventions
+- [docs/en/PLAN_VISIONAID.md](docs/en/PLAN_VISIONAID.md), [docs/en/PLAN_PHASE2.md](docs/en/PLAN_PHASE2.md), [docs/en/REPORT.md](docs/en/REPORT.md), [docs/en/PROGRESS.md](docs/en/PROGRESS.md): the team's plans, first report and progress table
+- [docs/en/state_of_the_art_sound_guidance.md](docs/en/state_of_the_art_sound_guidance.md): research on sound guidance for blind people (studies, products, recommendations)
+- [docs/en/checkpoint_recordings.md](docs/en/checkpoint_recordings.md) and [docs/en/config_calib_README.md](docs/en/config_calib_README.md): recording and calibration procedure
 - [docs/dossier_technique_fr.md](docs/dossier_technique_fr.md): full technical dossier in French (maths, every technique explained, jury Q&A)
 
 ---
@@ -102,4 +106,8 @@ The system understands **French** requests (the prototype speaks French).
 - Guidance sounds: Romain Benoit. Open-source models: YOLOE (Ultralytics), DINOv2 (Meta), Depth Anything V2, Whisper (OpenAI).
 - Event: [Hack1robo](https://www.hack1robo.fr/accueil), organised by the Mnemosyne team (Inria Bordeaux).
 
-*The original French README follows the team's repository; most code comments are still in French.*
+## 🌐 Language
+
+- Documentation, code comments, docstrings, terminal messages and the phone web page are in **English** in this fork. The program logic is unchanged.
+- What the user **says and hears** stays in **French** (voice requests such as « où est ma gourde », spoken announcements), because the prototype was built for French-speaking users.
+- The French originals of every team document are kept next to the translations and remain the reference.

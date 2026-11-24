@@ -1,9 +1,9 @@
-"""Carte des meubles (tables, canapé, chaises…) : de quoi dire « la gourde est sur la table ».
+"""Furniture map (tables, sofa, chairs…): what is needed to say "the bottle is on the table".
 
-Chaque meuble détecté (masque YOLOE + profondeur) est remonté en 3D dans le repère monde aligné
-(z haut, sol à z = 0). On en garde l'emprise au sol (rectangle x, y) et la hauteur du dessus.
-Les observations successives d'un même meuble sont fusionnées : même famille de meuble (ou
-emprises qui se recouvrent) et centres proches.
+Each detected piece of furniture (YOLOE mask + depth) is lifted to 3D in the aligned world frame
+(z up, floor at z = 0). We keep its footprint on the floor (x, y rectangle) and the height of its top.
+Successive observations of the same piece of furniture are merged: same furniture family (or
+overlapping footprints) and close centres.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import numpy as np
 
 from visionaid.bus.messages import Landmarks
 
-# familles : une table vue comme « desk » puis « table » reste le même meuble
+# families: a table seen as "desk" then "table" stays the same piece of furniture
 GROUPS = {
     "table": "table",
     "coffee table": "table",
@@ -35,7 +35,7 @@ GROUPS = {
 class Landmark:
     box: np.ndarray  # xmin, ymin, xmax, ymax
     top_z: float
-    votes: dict = field(default_factory=dict)  # label -> somme des confiances
+    votes: dict = field(default_factory=dict)  # label -> sum of confidences
     n_obs: int = 1
     t_last: float = 0.0
 
@@ -49,7 +49,7 @@ class Landmark:
 
 
 def box_overlap(a: np.ndarray, b: np.ndarray) -> float:
-    """Recouvrement des emprises, rapporté à la plus petite (0 à 1)."""
+    """Overlap of the footprints, relative to the smaller one (0 to 1)."""
     w = min(a[2], b[2]) - max(a[0], b[0])
     h = min(a[3], b[3]) - max(a[1], b[1])
     if w <= 0 or h <= 0:
@@ -59,7 +59,7 @@ def box_overlap(a: np.ndarray, b: np.ndarray) -> float:
 
 
 class LandmarkMap:
-    """Meubles repérés, mis à jour à chaque détection de meubles."""
+    """Spotted furniture, updated at each furniture detection."""
 
     def __init__(self, cfg_landmarks) -> None:
         c = cfg_landmarks
@@ -74,7 +74,7 @@ class LandmarkMap:
         self.n_updates = 0
 
     def observe(self, label: str, score: float, pts_world: np.ndarray, t: float) -> None:
-        """Ajoute une observation (points 3D monde du meuble)."""
+        """Adds an observation (3D world points of the furniture)."""
         p = pts_world[(pts_world[:, 2] > 0.05) & (pts_world[:, 2] < 2.2)]
         if len(p) < self.min_points:
             return
@@ -94,11 +94,11 @@ class LandmarkMap:
                     best, best_d = lm, d
         if best is None:
             self.items.append(Landmark(box, top, {label: float(score)}, 1, t))
-            if len(self.items) > self.max_count:  # oubli du meuble le moins vu
+            if len(self.items) > self.max_count:  # forget the least seen piece of furniture
                 self.items.remove(min(self.items, key=lambda m: (m.n_obs, m.t_last)))
         else:
             a = self.ema
-            # l'emprise grandit vite (vues partielles successives), rétrécit lentement
+            # the footprint grows fast (successive partial views), shrinks slowly
             grow = np.r_[np.minimum(best.box[:2], box[:2]), np.maximum(best.box[2:], box[2:])]
             best.box = (1 - a) * best.box + a * (0.5 * grow + 0.5 * box)
             best.top_z = (1 - a) * best.top_z + a * top
@@ -108,7 +108,7 @@ class LandmarkMap:
         self.n_updates += 1
 
     def update(self, t: float, T_world_cam, depth: np.ndarray, K: np.ndarray, dets, masks) -> None:
-        """Meubles d'une image (masques déjà décompressés)."""
+        """Furniture of an image (masks already decompressed)."""
         from visionaid.mapping.geometry import backproject, transform
 
         if dets is None or not len(dets.boxes):
@@ -125,7 +125,7 @@ class LandmarkMap:
                 x0, y0, x1, y1 = np.clip(dets.boxes[i], 0, [w, h, w, h]).astype(int)
                 m = np.zeros((h, w), bool)
                 m[y0:y1, x0:x1] = True
-            # bords du masque érodés : la profondeur y saute souvent sur le fond (mur, sol)
+            # eroded mask edges: depth often jumps to the background there (wall, floor)
             m = cv2.erode(m.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
             pc, _ = backproject(depth, K, self.step, m, 0.2, self.max_range)
             if len(pc) < self.min_points:

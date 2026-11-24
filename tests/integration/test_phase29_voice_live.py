@@ -1,4 +1,4 @@
-"""Phase 29 : demande dite au téléphone → recherche → annonces (faux téléphone, modèles stubs)."""
+"""Phase 29: request spoken on the phone → search → announcements (fake phone, stub models)."""
 
 import socket
 
@@ -28,7 +28,7 @@ def test_spoken_request_then_announcements(tmp_path):
         "bus.base_port": free_port() + 20,
         "phone.calib_dir": str(tmp_path / "calib"),
         "command.mode": "stt",
-        "command.stt": "phone",  # texte envoyé par le téléphone : pas de Whisper dans ce test
+        "command.stt": "phone",  # text sent by the phone: no Whisper in this test
     }
     raw = load_raw(overrides=ov)
     raw["_raw_base"] = load_raw(overrides=ov)
@@ -51,7 +51,7 @@ def test_spoken_request_then_announcements(tmp_path):
     assert any(t.startswith("Je n'ai pas compris") for t in sp)
     i = next(k for k, t in enumerate(sp) if t.startswith("Je cherche la gourde"))
     assert any("gourde est" in t for t in sp[i + 1 :]), sp
-    # avant la demande : silence (IDLE), ensuite recherche puis guidage
+    # before the request: silence (IDLE), then search then guidance
     modes = s["guidance"]["modes"]
     assert modes.get("silent", 0) > 0 and modes.get("guide", 0) > 0
     assert s["path"]["n_valid_paths"] > 5

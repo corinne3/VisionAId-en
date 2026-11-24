@@ -1,4 +1,4 @@
-"""Phase 22 (intégration) : sons de guidage servis au téléphone et consignes sonores en direct."""
+"""Phase 22 (integration): guidance sounds served to the phone and live sound instructions."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ async def _client(srv, cmd: SoundCommand):
                 )
             )
             got["welcome"] = json.loads((await ws.receive(timeout=5)).data)
-            srv.send_sound(cmd)  # depuis un autre fil que celui du serveur, comme le bloc source
+            srv.send_sound(cmd)  # from a thread other than the server's, like the source block
             t_end = time.time() + 5
             while time.time() < t_end:
                 m = json.loads((await ws.receive(timeout=5)).data)
@@ -79,18 +79,18 @@ def _pose(t, idx, quality="ok"):
     import numpy as np
 
     T = np.eye(4)
-    T[:3, :3] = [[0, 0, 1], [-1, 0, 0], [0, -1, 0]]  # caméra : axe optique vers +x monde
+    T[:3, :3] = [[0, 0, 1], [-1, 0, 0], [0, -1, 0]]  # camera: optical axis towards world +x
     T[2, 3] = 1.3
     return Pose(t, idx, T, quality)
 
 
 def test_live_guidance_block_sound_and_stale_pose():
     blk = LiveGuidanceBlock(load_raw(), stale_s=0.2)
-    assert blk.process({}) is None  # pas de pose : silence
+    assert blk.process({}) is None  # no pose: silence
     out = blk.process({"pose_world": _pose(0.0, 1)})
     assert isinstance(out["sound"], SoundCommand) and out["sound"].mode == "search"
     time.sleep(0.6)
-    for _ in range(3):  # pose figée : repérage perdu → « arrête-toi »
+    for _ in range(3):  # frozen pose: tracking lost → "stop"
         out = blk.process({"pose_world": _pose(0.0, 1)})
         time.sleep(0.2)
     assert out["cue"].state == "TRACKING_LOST" and out["sound"].mode == "lost"

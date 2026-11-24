@@ -1,8 +1,8 @@
-"""Synthèse vocale côté PC (macOS `say`) : rejeu de session et rendu hors ligne.
+"""Speech synthesis on the computer side (macOS `say`): session replay and offline rendering.
 
-En direct, les phrases sont dites par le téléphone (Web Speech, `web/audio.js`), dans le casque.
-Ici : `MacSpeaker` les dit sur le haut-parleur du Mac (rejeu d'une session sans téléphone) et
-`synth` les rend en échantillons pour la piste WAV des vidéos.
+Live, the sentences are spoken by the phone (Web Speech, `web/audio.js`), in the headset.
+Here: `MacSpeaker` speaks them on the Mac speaker (replay of a session without a phone) and
+`synth` renders them as samples for the WAV track of the videos.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def available() -> bool:
 def synth(
     text: str, fs: int, voice: str = "Thomas", rate_wpm: int = 190, cache_dir: Path | None = None
 ) -> np.ndarray | None:
-    """Phrase → échantillons mono float64 à `fs` (None si `say` est absent ou échoue)."""
+    """Sentence → mono float64 samples at `fs` (None if `say` is missing or fails)."""
     if not text or not available():
         return None
     import soundfile as sf
@@ -49,8 +49,8 @@ def synth(
                 capture_output=True,
             )
             x, sr = sf.read(str(out), always_2d=True)
-        except Exception as e:  # noqa: BLE001 - voix absente, format non lu…
-            log.warning("Synthèse vocale impossible (%s) : %s", voice, e)
+        except Exception as e:  # noqa: BLE001 - voice missing, format not read…
+            log.warning("Speech synthesis impossible (%s): %s", voice, e)
             return None
     x = x.mean(axis=1)
     if sr != fs:
@@ -62,7 +62,7 @@ def synth(
         x = resample_poly(x, fs // g, sr // g)
     peak = float(np.abs(x).max()) if len(x) else 0.0
     if peak > 0:
-        x = x * (0.5 / peak)  # crête −6 dBFS, à peu près le niveau des sons du guidage
+        x = x * (0.5 / peak)  # peak −6 dBFS, roughly the level of the guidance sounds
     if cpath is not None:
         cpath.parent.mkdir(parents=True, exist_ok=True)
         sf.write(str(cpath), x, fs, subtype="PCM_16")
@@ -70,7 +70,7 @@ def synth(
 
 
 class MacSpeaker:
-    """Dit les phrases une à une sur le haut-parleur du Mac (fil d'exécution dédié)."""
+    """Speaks the sentences one by one on the Mac speaker (dedicated thread)."""
 
     def __init__(self, voice: str = "Thomas", rate_wpm: int = 190) -> None:
         self.voice = voice
@@ -81,7 +81,7 @@ class MacSpeaker:
         if self.ok:
             threading.Thread(target=self._run, name="mac-tts", daemon=True).start()
         else:
-            log.warning("`say` absent : phrases affichées seulement")
+            log.warning("`say` missing: sentences displayed only")
 
     def say(self, text: str) -> None:
         log.info("Voix : %s", text)

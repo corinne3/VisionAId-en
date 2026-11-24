@@ -1,8 +1,8 @@
-"""Recalage d'échelle de la profondeur monoculaire par la hauteur de caméra déclarée.
+"""Scale re-anchoring of monocular depth from the declared camera height.
 
-Avec la direction « haut » en repère caméra (gravité), la distance caméra → sol se mesure sur les
-points bas de l'image. Le facteur s = hauteur déclarée / hauteur mesurée est lissé (en log) et
-borné, puis appliqué à la profondeur. Remplace le facteur fixe calibré sur une seule vidéo.
+With the "up" direction in the camera frame (gravity), the camera → floor distance is measured on the
+low points of the image. The factor s = declared height / measured height is smoothed (in log) and
+bounded, then applied to the depth. Replaces the fixed factor calibrated on a single video.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from visionaid.mapping.geometry import backproject
 
 
 class DepthScaleCorrector:
-    """Facteur d'échelle multiplicatif de la profondeur, ré-estimé en continu."""
+    """Multiplicative depth scale factor, re-estimated continuously."""
 
     def __init__(
         self,
@@ -52,7 +52,7 @@ class DepthScaleCorrector:
         return math.exp(self.log_s)
 
     def measure_height(self, depth: np.ndarray, K: np.ndarray, up_cam: np.ndarray) -> float | None:
-        """Hauteur caméra → sol mesurée sur la profondeur brute (sans correction)."""
+        """Camera → floor height measured on the raw depth (without correction)."""
         h = depth.shape[0]
         mask = np.zeros(depth.shape, bool)
         mask[int(h * (1 - self.bottom)) :] = True
@@ -61,18 +61,18 @@ class DepthScaleCorrector:
             return None
         below = -(
             pc @ (np.asarray(up_cam, float) / np.linalg.norm(up_cam))
-        )  # distance sous la caméra
-        below = below[below > 0.5 * self.min_h / self.scale]  # seuil exprimé en profondeur brute
+        )  # distance below the camera
+        below = below[below > 0.5 * self.min_h / self.scale]  # threshold expressed in raw depth
         if len(below) < self.min_points:
             return None
-        # le sol est la surface la plus basse : le mode le plus bas parmi les modes denses
+        # the floor is the lowest surface: the lowest mode among the dense modes
         edges = np.arange(below.min(), below.max() + 2 * self.bin, self.bin)  # ≥ 2 bords
         if len(edges) < 2:
             return None
         hist, edges = np.histogram(below, edges)
-        hs = hist + np.r_[hist[1:], 0] + np.r_[0, hist[:-1]]  # lissage sur 3 bins
-        # seuil ABSOLU (et non relatif au mode principal) : quand la caméra vise une table, le
-        # dessus de table domine et le sol, plus bas, n'est qu'un mode secondaire (essai réel)
+        hs = hist + np.r_[hist[1:], 0] + np.r_[0, hist[:-1]]  # smoothing over 3 bins
+        # ABSOLUTE threshold (not relative to the main mode): when the camera points at a table, the
+        # table top dominates and the floor, lower down, is only a secondary mode (real trial)
         need = max(self.min_points / 3.0, 0.04 * len(below))
         dense = np.nonzero((hs >= need) & (hist > 0))[0]
         if len(dense) == 0:
@@ -85,14 +85,14 @@ class DepthScaleCorrector:
         return float(np.median(sel))
 
     def update(self, depth: np.ndarray, K: np.ndarray, up_cam: np.ndarray | None) -> float:
-        """Met à jour le facteur à partir d'une profondeur brute ; renvoie le facteur courant."""
+        """Updates the factor from a raw depth; returns the current factor."""
         if up_cam is None:
             return self.scale
         h = self.measure_height(depth, K, up_cam)
         if h is None or h <= 0:
             return self.scale
         s_meas = float(np.clip(self.h_ref / h, self.lo, self.hi))
-        if self.n_updates == 0:  # démarrage robuste : médiane des premières mesures
+        if self.n_updates == 0:  # robust start: median of the first measurements
             self._init.append(s_meas)
             if len(self._init) < self.n_init:
                 return self.scale
@@ -100,7 +100,7 @@ class DepthScaleCorrector:
             a = 1.0
         else:
             if abs(math.log(s_meas) - self.log_s) > math.log(self.max_jump):
-                self.n_rejected += 1  # saut d'échelle invraisemblable : autre surface que le sol
+                self.n_rejected += 1  # implausible scale jump: a surface other than the floor
                 return self.scale
             a = self.ema
         self.log_s = (1 - a) * self.log_s + a * math.log(s_meas)
@@ -110,7 +110,7 @@ class DepthScaleCorrector:
         return self.scale
 
     def __call__(self, depth: Depth, K: np.ndarray, up_cam: np.ndarray | None) -> Depth:
-        """Profondeur corrigée (nouvel objet ; l'entrée n'est pas modifiée)."""
+        """Corrected depth (new object; the input is not modified)."""
         s = self.update(depth.depth, K, up_cam)
         return Depth(
             depth.t, depth.frame_idx, (depth.depth * s).astype(np.float32), depth.confidence

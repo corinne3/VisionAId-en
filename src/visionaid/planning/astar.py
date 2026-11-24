@@ -1,6 +1,6 @@
-"""A* 8-connexe sur grille de coût (noyau numba), et Dijkstra de référence.
+"""8-connected A* on a cost grid (numba kernel), and reference Dijkstra.
 
-Coût d'un pas a → b = longueur × (1 + (c[a] + c[b]) / 2) ; pas de coupe de coin diagonale.
+Cost of a step a → b = length × (1 + (c[a] + c[b]) / 2); no diagonal corner cutting.
 """
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ def _astar_kernel(cc, h, w, s, goal, use_h):
 def astar(
     cell_cost: np.ndarray, start: tuple[int, int], goal: tuple[int, int], heuristic: bool = True
 ) -> tuple[list[tuple[int, int]] | None, float]:
-    """Plus court chemin. Retourne (chemin [(i,j)…], coût) ou (None, inf) si inatteignable."""
+    """Shortest path. Returns (path [(i,j)…], cost) or (None, inf) if unreachable."""
     h, w = cell_cost.shape
     if not (0 <= start[0] < h and 0 <= start[1] < w and 0 <= goal[0] < h and 0 <= goal[1] < w):
         return None, math.inf
@@ -133,10 +133,10 @@ def astar(
 
 
 def dijkstra(cell_cost: np.ndarray, start: tuple[int, int], goal: tuple[int, int]):
-    """Référence brute : même noyau sans heuristique."""
+    """Brute-force reference: same kernel without heuristic."""
     return astar(cell_cost, start, goal, heuristic=False)
 
 
 def warmup() -> None:
-    """Compile le noyau (cache disque numba)."""
+    """Compiles the kernel (numba disk cache)."""
     astar(np.zeros((4, 4)), (0, 0), (3, 3))

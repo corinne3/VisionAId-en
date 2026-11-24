@@ -1,4 +1,4 @@
-"""Estimation et suivi du plan du sol ; alignement du repère monde (z vers le haut)."""
+"""Floor plane estimation and tracking; world frame alignment (z up)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def fit_plane_ransac(
     up_hint: np.ndarray | None = None,
     max_tilt_deg: float = 90.0,
 ) -> tuple[np.ndarray, float, np.ndarray] | None:
-    """Plan n·p + d = 0 par RANSAC puis moindres carrés sur les inliers. Retourne (n, d, masque)."""
+    """Plane n·p + d = 0 by RANSAC then least squares on the inliers. Returns (n, d, mask)."""
     if len(pts) < 3:
         return None
     best_inl, best = None, None
@@ -50,7 +50,7 @@ def fit_plane_ransac(
 
 
 class FloorTracker:
-    """Suit le plan du sol dans le repère VO (première caméra) et fournit l'alignement z-haut."""
+    """Tracks the floor plane in the VO frame (first camera) and provides the z-up alignment."""
 
     def __init__(self, cfg_floor, seed: int = 0) -> None:
         c = cfg_floor
@@ -62,11 +62,11 @@ class FloorTracker:
         self.max_tilt = float(c.max_tilt_deg)
         self.step = int(c.pixel_step)
         self.rng = np.random.default_rng(seed)
-        self.n: np.ndarray | None = None  # normale (vers le haut) en repère VO
+        self.n: np.ndarray | None = None  # normal (upward) in the VO frame
         self.d = 0.0
         self.n_updates = 0
-        self.heading_ref: np.ndarray | None = None  # axe avant de la première caméra (repère VO)
-        self.tilts_deg: list[float] = []  # inclinaison plan ajusté / gravité (contrôle)
+        self.heading_ref: np.ndarray | None = None  # forward axis of the first camera (VO frame)
+        self.tilts_deg: list[float] = []  # fitted plane tilt / gravity (check)
         self.origin_ref: np.ndarray | None = None
 
     @property
@@ -76,10 +76,10 @@ class FloorTracker:
     def update(
         self, depth: np.ndarray, K: np.ndarray, T_vo_cam: np.ndarray, up: np.ndarray | None = None
     ) -> bool:
-        """Met à jour le plan à partir de la moitié basse de l'image. Retourne True si mesuré.
+        """Updates the plane from the lower half of the image. Returns True if measured.
 
-        `up` (gravité, repère VO) fixe la normale : le RANSAC ne sert plus qu'à trouver la hauteur
-        du sol et, en contrôle, à mesurer l'inclinaison du plan ajusté (`tilts_deg`).
+        `up` (gravity, VO frame) fixes the normal: RANSAC is then only used to find the height
+        of the floor and, as a check, to measure the tilt of the fitted plane (`tilts_deg`).
         """
         h = depth.shape[0]
         mask = np.zeros(depth.shape, bool)
@@ -96,11 +96,11 @@ class FloorTracker:
                 return False
             n_fit, _, inl = res
             self.tilts_deg.append(float(np.degrees(np.arccos(np.clip(np.dot(n_fit, g), -1, 1)))))
-            n = g  # normale imposée par la gravité ; hauteur du sol par les inliers
+            n = g  # normal imposed by gravity; floor height from the inliers
             d = -float(np.median(pw[inl] @ n))
             inl = np.abs(pw @ n + d) < self.inlier_dist
         else:
-            # indice « haut » : −y caméra (image droite) ou normale courante
+            # "up" cue: camera −y (upright image) or current normal
             up_hint = self.n if self.n is not None else -T_vo_cam[:3, 1]
             res = fit_plane_ransac(
                 pw, self.iters, self.inlier_dist, self.rng, up_hint, self.max_tilt
@@ -109,7 +109,7 @@ class FloorTracker:
                 return False
             n, d, inl = res
         if inl.sum() < self.min_inliers or np.dot(n, cam) + d < 0.3:
-            return False  # pas assez de sol, ou caméra sous le « sol » (mur, meuble)
+            return False  # not enough floor, or camera below the "floor" (wall, furniture)
         if self.n is None:
             self.n, self.d = n, d
             self.heading_ref = T_vo_cam[:3, 2].copy()
@@ -119,7 +119,7 @@ class FloorTracker:
                 np.degrees(np.arccos(np.clip(np.dot(n, self.n), -1, 1))) > 10
                 or abs((np.dot(n, cam) + d) - self.height(cam)) > 0.3
             ):
-                return False  # mesure aberrante (table, lit…) : rejetée
+                return False  # outlier measurement (table, bed…): rejected
             a = self.alpha
             nn = (1 - a) * self.n + a * n
             self.n = nn / np.linalg.norm(nn)
@@ -128,17 +128,17 @@ class FloorTracker:
         return True
 
     def height(self, p_vo: np.ndarray) -> float:
-        """Hauteur d'un point (repère VO) au-dessus du sol."""
+        """Height of a point (VO frame) above the floor."""
         return float(np.dot(self.n, p_vo) + self.d)
 
     def T_world_vo(self) -> np.ndarray:
-        """Repère monde : z = normale du sol, x = cap initial projeté, origine au sol sous la 1re caméra."""
+        """World frame: z = floor normal, x = projected initial heading, origin on the floor under the 1st camera."""
         z = self.n
         f = self.heading_ref - np.dot(self.heading_ref, z) * z
         if np.linalg.norm(f) < 1e-6:
             f = np.cross(z, [1.0, 0, 0])
         x = f / np.linalg.norm(f)
         y = np.cross(z, x)
-        R = np.stack([x, y, z])  # lignes : axes monde exprimés en VO
-        o = self.origin_ref - self.height(self.origin_ref) * z  # pied de la première caméra
+        R = np.stack([x, y, z])  # rows: world axes expressed in VO
+        o = self.origin_ref - self.height(self.origin_ref) * z  # foot of the first camera
         return make_T(R, -R @ o)

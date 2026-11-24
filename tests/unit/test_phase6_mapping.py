@@ -36,14 +36,14 @@ def test_plane_ransac_noisy():
 
 
 def test_floor_tracker_camera_height():
-    """Caméra à 1,4 m, inclinée de 30° vers le bas, au-dessus d'un sol plat (repère VO = caméra)."""
+    """Camera at 1.4 m, tilted 30° downwards, above a flat floor (VO frame = camera)."""
     cfg = cfg_()
     K = np.array([[300.0, 0, 160], [0, 300.0, 120], [0, 0, 1]])
     h, w = 240, 320
     p = np.radians(30)
     v, u = np.mgrid[0:h, 0:w]
     y = (v - 120) / 300.0
-    den = np.cos(p) * y + np.sin(p)  # up_cam = (0, -cos p, -sin p) ; up·X = -1,4 au sol
+    den = np.cos(p) * y + np.sin(p)  # up_cam = (0, -cos p, -sin p); up·X = -1.4 on the floor
     depth = np.where(den > 1e-3, 1.4 / np.maximum(den, 1e-3), 50.0)
     depth += np.random.default_rng(0).normal(0, 0.005, depth.shape)
     ft = FloorTracker(cfg.floor)
@@ -54,13 +54,13 @@ def test_floor_tracker_camera_height():
     T_w = ft.T_world_vo()
     cam_world = T_w @ np.array([0, 0, 0, 1.0])
     assert cam_world[2] == pytest.approx(1.4, abs=0.03)
-    assert np.allclose(cam_world[:2], 0, atol=1e-6)  # origine au sol sous la 1re caméra
+    assert np.allclose(cam_world[:2], 0, atol=1e-6)  # origin on the floor under the 1st camera
     fwd = T_w[:3, :3] @ np.array([0, 0, 1.0])
     assert fwd[0] > 0.8 and abs(fwd[1]) < 1e-6  # cap initial = +x
 
 
 def scan_box(grid, box_min, box_max, cam, rng, n=3000):
-    """Points : sol libre autour + faces d'une boîte."""
+    """Points: free floor around + faces of a box."""
     floor = np.stack([rng.uniform(-3, 3, n), rng.uniform(-3, 3, n), np.zeros(n)], 1)
     inside = (
         (floor[:, 0] > box_min[0])
@@ -123,7 +123,7 @@ def test_inflation_radius():
     first_free = int(np.argmax(np.isfinite(row)))
     radius_cells = cfg.costmap.robot_radius_m / cfg.costmap.resolution_m
     assert abs(first_free - radius_cells) <= 1
-    assert row[first_free] > row[first_free + 5] > 0  # coût décroissant
+    assert row[first_free] > row[first_free + 5] > 0  # decreasing cost
 
 
 def test_decay_removes_obstacle():

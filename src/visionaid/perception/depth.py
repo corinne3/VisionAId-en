@@ -1,4 +1,4 @@
-"""Profondeur métrique monoculaire : backends interchangeables, lissage temporel, cache disque."""
+"""Monocular metric depth: interchangeable backends, temporal smoothing, disk cache."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ FALLBACK_ORDER = ["da3metric", "da3small", "dav2_indoor"]
 
 
 class DepthBackend(Protocol):
-    """Contrat : image BGR → profondeur (m) (H,W) float32 et confiance optionnelle."""
+    """Contract: BGR image → depth (m) (H,W) float32 and optional confidence."""
 
     name: str
 
@@ -28,7 +28,7 @@ class DepthBackend(Protocol):
 
 
 class HFDepthBackend:
-    """Modèle `transformers` AutoModelForDepthEstimation (Depth Anything V2 Metric)."""
+    """`transformers` AutoModelForDepthEstimation model (Depth Anything V2 Metric)."""
 
     def __init__(self, model_id: str, device: str, input_width: int = 518) -> None:
         import torch
@@ -62,7 +62,7 @@ class HFDepthBackend:
 
 
 class StubDepthBackend:
-    """Profondeur factice : fonction (H,W) → profondeur, par défaut sol + mur à 3 m."""
+    """Fake depth: function (H,W) → depth, by default floor + wall at 3 m."""
 
     name = "stub"
 
@@ -78,7 +78,7 @@ class StubDepthBackend:
 
 
 def make_backend(cfg, backend: str | None = None) -> DepthBackend:
-    """Backend selon la config, avec chaîne de repli (DA3 → DA3-Small → DAv2 Indoor)."""
+    """Backend according to the config, with a fallback chain (DA3 → DA3-Small → DAv2 Indoor)."""
     dcfg = cfg.depth
     wanted = backend or dcfg.backend
     if wanted == "stub":
@@ -93,23 +93,23 @@ def make_backend(cfg, backend: str | None = None) -> DepthBackend:
     for b in order:
         try:
             if b in ("da3metric", "da3small"):
-                # Depth Anything 3 n'est pas pris en charge par transformers ; le paquet
-                # `depth-anything-3` impose numpy<2 (incompatible avec rerun) : voir DECISIONS.md.
+                # Depth Anything 3 is not supported by transformers; the
+                # `depth-anything-3` package requires numpy<2 (incompatible with rerun): see DECISIONS.md.
                 import depth_anything_3  # noqa: F401
 
-                raise NotImplementedError("intégration DA3 non réalisée")
+                raise NotImplementedError("DA3 integration not done")
             mid = getattr(dcfg.models, b)
             be = HFDepthBackend(mid, device, dcfg.input_width)
-            log.info("Profondeur : %s sur %s", mid, device)
+            log.info("Depth: %s on %s", mid, device)
             return be
         except Exception as e:  # noqa: BLE001
             errors[b] = repr(e)[:200]
-            log.info("Backend profondeur %s indisponible : %s", b, errors[b])
-    raise RuntimeError(f"Aucun backend de profondeur : {errors}")
+            log.info("Depth backend %s unavailable: %s", b, errors[b])
+    raise RuntimeError(f"No depth backend: {errors}")
 
 
 class DepthEstimator:
-    """Estimation + facteur d'échelle + lissage temporel optionnel + cache disque."""
+    """Estimation + scale factor + optional temporal smoothing + disk cache."""
 
     def __init__(
         self, cfg, backend: DepthBackend | None = None, cache_key: str | None = None
@@ -134,7 +134,7 @@ class DepthEstimator:
         return None if self.cache_dir is None else self.cache_dir / f"{frame_idx:06d}.npz"
 
     def raw(self, frame: Frame) -> np.ndarray:
-        """Profondeur brute du modèle (avant échelle), avec cache."""
+        """Raw depth from the model (before scaling), with cache."""
         p = self.cache_path(frame.frame_idx)
         if p is not None and p.exists():
             self.cache_hits += 1
@@ -155,7 +155,7 @@ class DepthEstimator:
         )
 
     def _smooth(self, d: np.ndarray, K: np.ndarray, T: np.ndarray | None) -> np.ndarray:
-        """Moyenne exponentielle ; si la pose est fournie, la profondeur précédente est reprojetée."""
+        """Exponential average; if the pose is provided, the previous depth is reprojected."""
         prev = self._prev
         if prev is not None and T is not None and self._prev_T is not None:
             prev = warp_depth(prev, K, np.linalg.inv(T) @ self._prev_T)
@@ -167,7 +167,7 @@ class DepthEstimator:
         self._prev, self._prev_T = out, T
         return out
 
-    # interface Block du bus
+    # Block interface of the bus
     def process(self, inputs):
         f = inputs.get("frame")
         if f is None:
@@ -179,7 +179,7 @@ class DepthEstimator:
 def warp_depth(
     depth: np.ndarray, K: np.ndarray, T_cur_prev: np.ndarray, step: int = 2
 ) -> np.ndarray:
-    """Reprojette une carte de profondeur dans une autre vue (z-buffer simple, sous-échantillonné)."""
+    """Reprojects a depth map into another view (simple z-buffer, subsampled)."""
     h, w = depth.shape
     v, u = np.mgrid[0:h:step, 0:w:step]
     z = depth[v, u]
@@ -201,7 +201,7 @@ def warp_depth(
 
 
 def object_height_m(mask_or_box, depth: np.ndarray, K: np.ndarray) -> float | None:
-    """Hauteur 3D approximative d'un objet : étendue verticale (px) × profondeur médiane / fy."""
+    """Approximate 3D height of an object: vertical extent (px) × median depth / fy."""
     if isinstance(mask_or_box, np.ndarray) and mask_or_box.ndim == 2:
         ys, xs = np.nonzero(mask_or_box)
         if len(ys) < 20:
@@ -220,7 +220,7 @@ def object_height_m(mask_or_box, depth: np.ndarray, K: np.ndarray) -> float | No
 def video_depth_estimator(
     cfg, video: str | Path | None = None, backend: DepthBackend | None = None
 ) -> DepthEstimator:
-    """Estimateur avec cache disque propre à (vidéo, modèle, résolution)."""
+    """Estimator with a disk cache specific to (video, model, resolution)."""
     from visionaid.io.session import media_hash
 
     video = resolve_path(video or cfg.paths.video)

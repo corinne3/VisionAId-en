@@ -1,8 +1,8 @@
-"""Mode temps réel : graphe multi-processus sur le bus ZeroMQ, vidéo rejouée au rythme réel (1×).
+"""Real-time mode: multi-process graph on the ZeroMQ bus, video replayed at real-time pace (1×).
 
-Multi-cadence : détection à chaque frame disponible, profondeur + pose aussi vite que possible,
-planification à 5 Hz, consignes à 20 Hz. Mesure les latences par étage (p50/p95), les frames
-sautées et les fréquences effectives.
+Multi-rate: detection on every available frame, depth + pose as fast as possible,
+planning at 5 Hz, instructions at 20 Hz. Measures latencies per stage (p50/p95), skipped
+frames and effective frequencies.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def graph(raw: dict) -> list[NodeSpec]:
             f"{B}:make_guidance",
             inputs=["pose_world", "object", "path", "costmap"],
             outputs=["cue"],
-            trigger=None,  # minuteur 20 Hz sur les dernières entrées
+            trigger=None,  # 20 Hz timer on the latest inputs
             rate_hz=float(rt["cue_hz"]),
             heavy_inputs=["costmap"],
         ),
@@ -92,7 +92,7 @@ def run(
             raw["body"]["camera_height_m"] = h
         raw["_imu"] = True
     duration_s = float(duration_s or raw["realtime"]["duration_s"])
-    # les nœuds chargent leurs modèles pendant `warmup_s` ; la lecture démarre à t0
+    # the nodes load their models during `warmup_s`; reading starts at t0
     raw["_t0_wall"] = time.time() + warmup_s
     specs = graph(raw)
     runner = GraphRunner(specs, raw, base_port=int(raw["bus"]["base_port"]), stop_timeout_s=10.0)
@@ -102,7 +102,7 @@ def run(
             time.sleep(0.5)
             if len(runner.alive()) < len(specs):
                 log.error(
-                    "Nœud(s) arrêté(s) : %s",
+                    "Node(s) stopped: %s",
                     set(p.name for p in runner.procs) - set(runner.alive()),
                 )
                 break
@@ -144,13 +144,13 @@ def run(
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--duration", type=float, default=None)
-    ap.add_argument("--session", default=None, help="dossier de session téléphone à rejouer")
-    ap.add_argument("--target", default=None, help="prompt fixe, ex. « où sont mes clés »")
+    ap.add_argument("--session", default=None, help="phone session folder to replay")
+    ap.add_argument("--target", default=None, help="fixed prompt, e.g. « où sont mes clés »")
     args = ap.parse_args(argv)
     raw = load_raw(overrides={"target.query": args.target} if args.target else None)
     s = run(args.duration, raw, session=args.session)
     update_report("realtime", s)
-    log.info("Temps réel : %s", s["e2e_latency"])
+    log.info("Real time: %s", s["e2e_latency"])
     return s
 
 

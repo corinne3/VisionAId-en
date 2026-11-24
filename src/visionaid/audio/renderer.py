@@ -1,12 +1,12 @@
-"""Rendu hors ligne des consignes en piste stéréo (WAV), avec les sons de `assets/sounds`.
+"""Offline rendering of the instructions as a stereo track (WAV), with the sounds from `assets/sounds`.
 
-Exécute les `SoundCommand` de `audio.director` exactement comme le téléphone (`web/audio.js`) :
-- chemin : note du son 2 (ou son 4 en recherche) répétée tous les `interval_s`, placée par un
-  pan stéréo à puissance constante (pan −1 : tout à gauche, rien à droite) ;
-- obstacles : nappe du son 1 en boucle, superposée, gain `obstacle_db` lissé ;
-- arrivée : son 3 joué une fois, centré ;
-- phrases (annonces) : synthèse macOS `say`, centrées, l'une après l'autre ; pendant une phrase
-  « duck » (objet trouvé) la couche chemin est suspendue, comme sur le téléphone.
+Executes the `SoundCommand`s of `audio.director` exactly like the phone (`web/audio.js`):
+- path: note of sound 2 (or sound 4 while searching) repeated every `interval_s`, placed by a
+  constant-power stereo pan (pan −1: fully left, nothing on the right);
+- obstacles: looping pad of sound 1, overlaid, smoothed `obstacle_db` gain;
+- arrival: sound 3 played once, centred;
+- sentences (announcements): macOS `say` synthesis, centred, one after the other; during a
+  "duck" sentence (object found) the path layer is suspended, as on the phone.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def db_lin(db: float) -> float:
 
 
 def load_sound(path: str | Path, fs: int) -> np.ndarray:
-    """WAV → float64 (N, C) au taux `fs`."""
+    """WAV → float64 (N, C) at rate `fs`."""
     import soundfile as sf
 
     x, sr = sf.read(str(path), always_2d=True)
@@ -44,7 +44,7 @@ def load_sound(path: str | Path, fs: int) -> np.ndarray:
 
 
 def _smooth(x: np.ndarray, fs: int, tau: float) -> np.ndarray:
-    """Lissage exponentiel (premier ordre) d'un paramètre par échantillon."""
+    """Exponential (first-order) smoothing of a per-sample parameter."""
     if tau <= 0 or len(x) == 0:
         return x
     from scipy.signal import lfilter
@@ -54,13 +54,13 @@ def _smooth(x: np.ndarray, fs: int, tau: float) -> np.ndarray:
 
 
 class AudioRenderer:
-    """Convertit une suite de consignes horodatées en piste stéréo synchronisée."""
+    """Converts a sequence of timestamped instructions into a synchronised stereo track."""
 
     def __init__(self, cfg_audio, cfg_tts=None, cache_dir=None) -> None:
         a = cfg_audio
         self.tts = cfg_tts
         self.tts_cache = cache_dir
-        self.speeches: list[tuple[float, float, str]] = []  # (début, fin, texte) du dernier rendu
+        self.speeches: list[tuple[float, float, str]] = []  # (start, end, text) of the last rendering
         self.cfg = a
         self.fs = int(a.sample_rate)
         self.tau = float(a.smoothing_s)
@@ -81,7 +81,7 @@ class AudioRenderer:
         return SoundDirector(self.cfg)
 
     def interval(self, distance: float) -> float:
-        """Espacement entre deux notes du chemin à cette distance (s)."""
+        """Spacing between two path notes at this distance (s)."""
         return SoundDirector(self.cfg).interval(distance)
 
     @staticmethod
@@ -96,13 +96,13 @@ class AudioRenderer:
         return [d.command(c) for c in sorted(cues, key=lambda c: c.t)]
 
     def render(self, cues: list[GuidanceCue], t0: float, duration: float) -> np.ndarray:
-        """Piste stéréo float32 (N, 2) de durée `duration` commençant à `t0`."""
+        """Stereo float32 track (N, 2) of duration `duration` starting at `t0`."""
         fs = self.fs
         n = int(round(duration * fs))
         if n == 0:
             return np.zeros((0, 2), np.float32)
-        notes = np.zeros(n)  # couche chemin (mono, pannée ensuite)
-        center = np.zeros(n)  # arrivée (centrée)
+        notes = np.zeros(n)  # path layer (mono, panned afterwards)
+        center = np.zeros(n)  # arrival (centred)
         pan = np.zeros(n)
         ob_gain = np.zeros(n)
         cmds = self.commands(cues)
@@ -123,7 +123,7 @@ class AudioRenderer:
                     self._add(notes, int(round((next_note - t0) * fs)), note * db_lin(c.gain_db))
                     next_note += max(c.interval_s, 0.2)
                 if k + 1 < len(cmds) and cmds[k + 1].mode != c.mode:
-                    next_note = None  # passage recherche ↔ chemin : nouveau rythme immédiatement
+                    next_note = None  # search ↔ path switch: new rhythm immediately
             else:
                 next_note = None
             if c.event == "arrived":
@@ -132,10 +132,10 @@ class AudioRenderer:
         if duck is not None:
             notes *= _smooth(duck, fs, 0.03)
         center += speech
-        # pan et volume lissés : aucun clic aux changements
+        # smoothed pan and volume: no click on changes
         gl, gr = equal_power(_smooth(pan, fs, self.tau))
         st = np.stack([notes * gl, notes * gr], axis=1)
-        st += center[:, None]  # centré, mono sur les deux oreilles (comme Web Audio)
+        st += center[:, None]  # centred, mono on both ears (like Web Audio)
         g = _smooth(ob_gain, fs, self.tau_ob)
         if g.max() > 1e-6:
             reps = int(math.ceil(n / len(self.obstacle)))
@@ -143,12 +143,12 @@ class AudioRenderer:
         st *= self.master
         peak = float(np.abs(st).max())
         if peak > 0.98:
-            log.warning("Piste trop forte (crête %.2f) : ramenée à 0,98", peak)
+            log.warning("Track too loud (peak %.2f): brought down to 0.98", peak)
             st *= 0.98 / peak
         return st.astype(np.float32)
 
     def _speech(self, cmds: list[SoundCommand], t0: float, n: int):
-        """Piste des phrases (mono) et gain de la couche chemin (0 pendant une phrase « duck »)."""
+        """Track of the sentences (mono) and gain of the path layer (0 during a "duck" sentence)."""
         fs = self.fs
         out = np.zeros(n)
         self.speeches = []
@@ -174,7 +174,7 @@ class AudioRenderer:
         for t, text, dk in items:
             x = tts.synth(text, fs, voice, wpm, cache)
             dur = len(x) / fs if x is not None else 0.08 * len(text)
-            start = max(t, t_free)  # phrases à la suite, jamais superposées
+            start = max(t, t_free)  # sentences one after another, never overlapping
             t_free = start + dur + 0.3
             self.speeches.append((start, start + dur, text))
             i = int(round((start - t0) * fs))

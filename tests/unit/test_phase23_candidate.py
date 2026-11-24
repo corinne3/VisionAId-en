@@ -1,4 +1,4 @@
-"""Phase 23 (A) : cible « probable » avant confirmation (gourde lointaine, score juste sous le seuil)."""
+"""Phase 23 (A): "probable" target before confirmation (distant bottle, score just below the threshold)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ pytestmark = pytest.mark.unit
 IMG = np.zeros((240, 320, 3), np.uint8)
 BOX_A = np.array([100, 80, 140, 180], float)
 BOX_B = np.array([220, 60, 260, 160], float)
-TH = 0.5754  # seuil ReID calibré de la gourde
+TH = 0.5754  # calibrated ReID threshold of the bottle
 
 
 def run(tracker, seq):
@@ -29,8 +29,8 @@ def run(tracker, seq):
 def test_candidate_after_persistent_near_threshold_scores():
     cfg = load_config()
     tr = TargetTracker(cfg, TH)
-    res = run(tr, [[(BOX_A, 0.52)]] * 8)  # 0,52 : sous le seuil (0,575), au-dessus de 0,85 × seuil
-    assert all(d.target_idx < 0 for d in res)  # jamais confirmée
+    res = run(tr, [[(BOX_A, 0.52)]] * 8)  # 0.52: below the threshold (0.575), above 0.85 × threshold
+    assert all(d.target_idx < 0 for d in res)  # never confirmed
     cand = [d.candidate_idx for d in res]
     assert cand[:4] == [-1, -1, -1, -1]  # persistance requise (5 images)
     assert cand[4:] == [0, 0, 0, 0]
@@ -42,7 +42,7 @@ def test_no_candidate_below_ratio_or_when_confirmed():
     assert all(d.candidate_idx < 0 for d in run(tr, [[(BOX_A, 0.45)]] * 12))  # 0,45 < 0,49
     tr2 = TargetTracker(cfg, TH)
     res = run(tr2, [[(BOX_A, 0.52)]] * 6 + [[(BOX_A, 0.8)]] * 4)
-    assert res[-1].target_idx == 0 and res[-1].candidate_idx == -1  # confirmée : plus de candidat
+    assert res[-1].target_idx == 0 and res[-1].candidate_idx == -1  # confirmed: no more candidate
 
 
 def test_candidate_picks_best_and_breaks_on_drop():
@@ -50,7 +50,7 @@ def test_candidate_picks_best_and_breaks_on_drop():
     tr = TargetTracker(cfg, TH)
     res = run(tr, [[(BOX_A, 0.50), (BOX_B, 0.54)]] * 7 + [[(BOX_A, 0.50), (BOX_B, 0.30)]])
     assert res[6].candidate_idx == 1  # B, meilleur score moyen
-    assert res[7].candidate_idx != 1  # B chute : plus candidat à cette image
+    assert res[7].candidate_idx != 1  # B drops: no longer a candidate in this frame
 
 
 def _world():
@@ -69,7 +69,7 @@ def test_world_candidate_needs_consistent_measurements():
     a.update_world(np.array([3.02, 1.0, 0.8]), 0.4, 0.5, 3.0)
     e = wm._estimate(0.45, 4)
     assert e.state == "candidate" and np.allclose(e.position[:2], [3.0, 1.0], atol=0.05)
-    # une cible confirmée prend le relais
+    # a confirmed target takes over
     wm.anchor.update_world(np.array([3.0, 1.05, 0.8]), 0.5, 1.0, 3.0)
     wm._check_candidate()
     assert wm._estimate(0.55, 5).state == "seen" and wm.n_cand_wrong == 0
@@ -91,9 +91,9 @@ def test_candidate_never_arrived():
     cfg = load_config()
     eng = GuidanceEngine(cfg)
     T = np.eye(4)
-    T[:3, :3] = np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]]).T  # caméra regardant +x, z haut
+    T[:3, :3] = np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]]).T  # camera looking towards +x, z up
     T[2, 3] = 1.4
-    obj_pos = np.array([0.3, 0.0, 0.8])  # à 30 cm : « arrivé » si confirmée
+    obj_pos = np.array([0.3, 0.0, 0.8])  # at 30 cm: "arrived" if confirmed
     states = []
     for k in range(20):
         pose = Pose(k * 0.1, k, T.copy())
@@ -112,11 +112,11 @@ def test_candidate_never_arrived():
         ).state
         for k in range(20)
     ]
-    assert "ARRIVED" in st2  # même scène, cible confirmée : arrivée
+    assert "ARRIVED" in st2  # same scene, confirmed target: arrival
 
 
 def run_col(tracker, seq):
-    """Comme `run`, avec la part couleur : items = (boîte, score, couleur)."""
+    """Like `run`, with the colour share: items = (box, score, colour)."""
     out = []
     for k, items in enumerate(seq):
         det = StubDetector({k: [(b, 0.9, "bottle") for b, _, _ in items]}).detect(IMG, k / 10, k)
@@ -127,16 +127,16 @@ def run_col(tracker, seq):
 
 
 def test_candidate_needs_target_colour():
-    """Essai du 22/11 (gourde_son_live2) : un thermos noir (score 0,51, couleur 0,50, sans orange)
-    a été pris pour cible probable 5 s avant que la vraie gourde (couleur ≥ 0,82) ne soit vue."""
+    """Trial of 22/11 (gourde_son_live2): a black thermos (score 0.51, colour 0.50, no orange)
+    was taken as the probable target 5 s before the real bottle (colour ≥ 0.82) was seen."""
     cfg = load_config()
     thermos = run_col(TargetTracker(cfg, TH), [[(BOX_A, 0.52, 0.50)]] * 10)
     assert all(d.candidate_idx < 0 for d in thermos)
     gourde = run_col(TargetTracker(cfg, TH), [[(BOX_A, 0.52, 0.88)]] * 10)
     assert [d.candidate_idx for d in gourde][4:] == [0] * 6
-    # thermos plus ressemblant et gourde plus loin dans la même image : la gourde est choisie
+    # more similar thermos and bottle further away in the same image: the bottle is chosen
     both = run_col(TargetTracker(cfg, TH), [[(BOX_A, 0.54, 0.45), (BOX_B, 0.51, 0.85)]] * 8)
     assert both[-1].candidate_idx == 1
-    # sans modèle de couleur (clés, cible sans photo) : règle inchangée
+    # without a colour model (keys, target without photo): rule unchanged
     nocol = run(TargetTracker(cfg, TH), [[(BOX_A, 0.52)]] * 8)
     assert nocol[-1].candidate_idx == 0

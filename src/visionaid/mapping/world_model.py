@@ -1,4 +1,4 @@
-"""Modèle du monde : sol + costmap + ancrage de la cible, à partir de (frame, profondeur, pose, détections)."""
+"""World model: floor + costmap + target anchoring, from (frame, depth, pose, detections)."""
 
 from __future__ import annotations
 
@@ -14,14 +14,14 @@ from visionaid.mapping.object_anchor import ObjectAnchor
 
 
 class WorldModel:
-    """Fusion 3D. Les poses VO sont réexprimées dans le repère monde aligné (z haut, sol z=0)."""
+    """3D fusion. VO poses are re-expressed in the aligned world frame (z up, floor z=0)."""
 
     def __init__(self, cfg) -> None:
         self.cfg = cfg
         self.floor = FloorTracker(cfg.floor)
         self.grid = OccupancyGrid(cfg.costmap)
         self.anchor = ObjectAnchor(cfg.anchor)
-        # cible probable (non confirmée) : ancrage séparé, publié seulement s'il est cohérent en 3D
+        # probable (unconfirmed) target: separate anchor, only published if it is consistent in 3D
         self.cand_anchor = ObjectAnchor(cfg.anchor)
         self.cand_min_meas = int(getattr(cfg.anchor, "candidate_min_meas", 4))
         self.cand_max_offset = float(getattr(cfg.anchor, "candidate_max_offset_m", 1.0))
@@ -31,9 +31,9 @@ class WorldModel:
         self.cam_heights: list[float] = []
         self.T_world_cam: np.ndarray | None = None
         self.pose_quality = "init"
-        self._pending: list[tuple] = []  # mesures de cible reçues avant l'alignement du sol
+        self._pending: list[tuple] = []  # target measurements received before floor alignment
         self._t_prev: float | None = None
-        # meubles (description de l'endroit où est l'objet) ; gardés quand la cible change
+        # furniture (description of where the object is); kept when the target changes
         from visionaid.mapping.landmarks import LandmarkMap
 
         lm = getattr(cfg, "landmarks", None)
@@ -41,7 +41,7 @@ class WorldModel:
         self.target_id = 0
 
     def reset_target(self, target_id: int) -> None:
-        """Nouvelle demande : la cible est oubliée, la carte et les meubles sont gardés."""
+        """New request: the target is forgotten, the map and the furniture are kept."""
         self.anchor = ObjectAnchor(self.cfg.anchor)
         self.cand_anchor = ObjectAnchor(self.cfg.anchor)
         self._pending = []
@@ -61,10 +61,10 @@ class WorldModel:
     ) -> tuple[Costmap | None, ObjectEstimate]:
         t = frame.t
         if dets is not None and getattr(dets, "target_id", 0) != self.target_id:
-            dets = None  # détections d'une demande précédente (encore en vol sur le bus)
+            dets = None  # detections of a previous request (still in flight on the bus)
         self.pose_quality = pose.quality
-        # « degraded » (orientation IMU seule, position gelée) : pose publiée, mais pas de
-        # cartographie ni d'ancrage, la position étant fausse dès que l'utilisateur marche
+        # "degraded" (IMU-only orientation, frozen position): pose published, but no
+        # mapping or anchoring, since the position is wrong as soon as the user walks
         lost = pose.quality in ("lost", "degraded")
         if not lost:
             self.floor.update(depth.depth, frame.K, pose.T_world_cam, getattr(pose, "up", None))
@@ -86,7 +86,7 @@ class WorldModel:
                 from visionaid.perception.pipeline import unpack_masks
 
                 mask = unpack_masks(dets, frame.image.shape[1])[i]
-            # confiance réduite : la mesure pèse moins qu'une détection confirmée
+            # reduced confidence: the measurement weighs less than a confirmed detection
             cand = (mask, dets.boxes[i], 0.5 * float(dets.reid_scores[i]))
         if not self.floor.ready:
             if target is not None and not lost:
@@ -129,14 +129,14 @@ class WorldModel:
         return self.grid.to_msg(t, frame.frame_idx), self._estimate(t, frame.frame_idx)
 
     def _check_candidate(self) -> None:
-        """Cible confirmée : le candidat est abandonné ; s'il en était loin, il était faux."""
+        """Target confirmed: the candidate is dropped; if it was far from it, it was false."""
         if self.cand_anchor.x is not None and self.anchor.x is not None:
             if np.linalg.norm(self.cand_anchor.x[:2] - self.anchor.x[:2]) > self.cand_max_offset:
                 self.n_cand_wrong += 1
             self.cand_anchor = ObjectAnchor(self.cfg.anchor)
 
     def _estimate(self, t: float, idx: int) -> ObjectEstimate:
-        """Cible confirmée si elle existe ; sinon cible probable cohérente (état « candidate »)."""
+        """Confirmed target if it exists; otherwise a consistent probable target ("candidate" state)."""
         est = self.anchor.estimate(t, idx)
         est.target_id = self.target_id
         if est.state != "unknown" or self.cand_anchor.n_meas < self.cand_min_meas:
@@ -150,7 +150,7 @@ class WorldModel:
             c.t, c.frame_idx, c.position, c.cov, "candidate", c.confidence, self.target_id
         )
 
-    # interface Block du bus
+    # Block interface of the bus
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None:
         f, d, p = inputs.get("frame"), inputs.get("depth"), inputs.get("pose")
         if f is None or d is None or p is None or not (f.frame_idx == d.frame_idx == p.frame_idx):
@@ -175,7 +175,7 @@ class WorldModel:
 
 
 def run_mapping_video(cfg, dets_by_idx: dict | None = None):
-    """Profondeur (cache) + VO + modèle du monde sur toute la vidéo. Retourne (world, records)."""
+    """Depth (cache) + VO + world model over the whole video. Returns (world, records)."""
     from visionaid.io.sources import VideoFileSource
     from visionaid.perception.depth import video_depth_estimator
     from visionaid.pose.source import VisualOdometry
@@ -204,7 +204,7 @@ def run_mapping_video(cfg, dets_by_idx: dict | None = None):
 
 
 def export_real_map(wm: WorldModel, records: list[dict], path) -> None:
-    """Sauvegarde la costmap finale (scénario « carte réelle » du simulateur)."""
+    """Saves the final costmap (simulator "real map" scenario)."""
     from pathlib import Path
 
     s = wm.grid.state()

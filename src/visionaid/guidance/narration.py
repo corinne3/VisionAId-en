@@ -1,18 +1,22 @@
-"""Annonces vocales du guidage : ce que l'outil dit, et quand.
+"""Voice announcements of the guidance: what the tool says, and when.
 
-Quatre moments seulement, pour ne pas saturer l'écoute (le son du chemin reste le guide) :
+Only four moments, so as not to saturate listening (the path sound remains the guide):
 
-1. **demande comprise** : « Je cherche la gourde. Tourne lentement sur toi-même. » (puis le son
-   de recherche) ; demande inconnue : « Je n'ai pas compris… » ;
-2. **objet trouvé** : où il est dans la pièce et le trajet global, chemin suspendu pendant la
-   phrase : « La gourde est au fond à droite, à environ 4 mètres, derrière le canapé, sur la
-   table. Le chemin contourne le canapé par la gauche. » ;
-3. **approche** (meuble porteur proche, ou objet à moins de 1,6 m), le son du chemin continue :
-   « Tu arrives vers la table, la gourde sera légèrement sur ta gauche. » ;
-4. **correction** si l'objet annoncé était ailleurs (cible probable puis confirmée plus loin).
+1. **request understood**: « Je cherche la gourde. Tourne lentement sur toi-même. » (I'm looking
+   for the bottle. Turn slowly on the spot.) (then the search sound); unknown request:
+   « Je n'ai pas compris… » (I didn't understand…);
+2. **object found**: where it is in the room and the overall route, path suspended during the
+   sentence: « La gourde est au fond à droite, à environ 4 mètres, derrière le canapé, sur la
+   table. Le chemin contourne le canapé par la gauche. » (The bottle is at the far right, about
+   4 metres away, behind the sofa, on the table. The path goes around the sofa on the left.);
+3. **approach** (carrying furniture close, or object less than 1.6 m away), the path sound continues:
+   « Tu arrives vers la table, la gourde sera légèrement sur ta gauche. » (You are getting close
+   to the table, the bottle will be slightly on your left.);
+4. **correction** if the announced object was elsewhere (probable target then confirmed further away).
 
-Les directions sont égocentriques (par rapport au torse de l'utilisateur au moment de la
-phrase) ; « au fond » = loin devant. Les meubles viennent de `mapping.landmarks`.
+Directions are egocentric (relative to the user's torso at the time of the
+sentence); « au fond » (at the far end) = far ahead. The furniture comes from `mapping.landmarks`.
+The spoken sentences stay in French: the users are French speakers.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ import math
 
 import numpy as np
 
-# prompt du détecteur → (nom, genre) ; genre « m », « f » ou « e » (élision : l'étagère)
+# detector prompt → (name, gender); gender "m", "f" or "e" (elision: l'étagère)
 FR_NOUNS = {
     "table": ("table", "f"),
     "coffee table": ("table basse", "f"),
@@ -36,8 +40,8 @@ FR_NOUNS = {
     "door": ("porte", "f"),
     "television": ("télévision", "f"),
 }
-NOT_SUPPORT = {"door", "television"}  # jamais « sur la porte »
-NOT_BETWEEN = {"door"}  # une porte ouverte n'est pas un obstacle à contourner
+NOT_SUPPORT = {"door", "television"}  # never « sur la porte » (on the door)
+NOT_BETWEEN = {"door"}  # an open door is not an obstacle to go around
 
 
 def noun(label: str) -> tuple[str, str]:
@@ -45,19 +49,19 @@ def noun(label: str) -> tuple[str, str]:
 
 
 def the(label: str) -> str:
-    """« la table », « le canapé », « l'étagère »."""
+    """« la table », « le canapé », « l'étagère » (French article + noun)."""
     n, g = noun(label)
     return f"l'{n}" if g == "e" else (f"la {n}" if g == "f" else f"le {n}")
 
 
 def of_the(label: str) -> str:
-    """« de la table », « du canapé », « de l'étagère »."""
+    """« de la table », « du canapé », « de l'étagère » (French "of the …")."""
     n, g = noun(label)
     return f"de l'{n}" if g == "e" else (f"de la {n}" if g == "f" else f"du {n}")
 
 
 def to_the(label: str) -> str:
-    """« vers la table », « vers le canapé »."""
+    """« vers la table », « vers le canapé » (French "towards the …")."""
     return f"vers {the(label)}"
 
 
@@ -71,7 +75,7 @@ def side(az: float) -> str:
 
 
 def where_phrase(az: float, dist: float, far_m: float) -> str:
-    """Position égocentrique : « au fond de la pièce », « devant toi, sur ta droite »…"""
+    """Egocentric position: « au fond de la pièce », « devant toi, sur ta droite »…"""
     a = abs(math.degrees(az))
     s = side(az)
     far = dist >= far_m
@@ -96,7 +100,7 @@ def distance_phrase(dist: float) -> str:
 
 
 def relative_side_phrase(az: float) -> str:
-    """Côté où sera l'objet en arrivant : « légèrement sur ta gauche »…"""
+    """Side where the object will be on arrival: « légèrement sur ta gauche »…"""
     a = abs(math.degrees(az))
     s = side(az)
     if a < 10:
@@ -122,7 +126,7 @@ def height_phrase(z: float) -> str:
     return "en hauteur"
 
 
-# ------------------------------------------------------------------ géométrie
+# ------------------------------------------------------------------ geometry
 def _ego(T_head: np.ndarray, p: np.ndarray) -> tuple[float, float]:
     from visionaid.guidance.cues import relative_direction
 
@@ -150,7 +154,7 @@ def _segment_hits_box(a, b, box, margin: float = 0.05, n: int = 40) -> bool:
 
 
 def support_of(obj_xyz, lms, margin: float) -> int | None:
-    """Indice du meuble qui porte l'objet (emprise qui le contient, dessus juste en dessous)."""
+    """Index of the furniture carrying the object (footprint containing it, top just below)."""
     if lms is None or not len(lms.labels) or obj_xyz[2] < 0.25:
         return None
     best, best_area = None, np.inf
@@ -161,7 +165,7 @@ def support_of(obj_xyz, lms, margin: float) -> int | None:
         top = float(lms.top_z[i])
         if _in_box(obj_xyz[:2], b, margin) and obj_xyz[2] - 0.5 <= top <= obj_xyz[2] + 0.1:
             area = (b[2] - b[0]) * (b[3] - b[1])
-            if area < best_area:  # le plus petit meuble qui le contient (table plutôt que pièce)
+            if area < best_area:  # the smallest furniture containing it (table rather than room)
                 best, best_area = i, area
     return best
 
@@ -180,18 +184,18 @@ def nearest_landmark(obj_xyz, lms, max_d: float, exclude=()) -> int | None:
 
 
 def between_landmark(user_xy, obj_xy, lms, exclude=()) -> int | None:
-    """Meuble entre l'utilisateur et l'objet (l'objet est « derrière » lui) : le plus grand."""
+    """Furniture between the user and the object (the object is "behind" it): the largest one."""
     if lms is None or not len(lms.labels):
         return None
     u, o = np.asarray(user_xy, float), np.asarray(obj_xy, float)
     d_uo = float(np.linalg.norm(o - u))
-    best, best_area = None, 0.15  # au moins 0,15 m² : pas une chaise de profil
+    best, best_area = None, 0.15  # at least 0.15 m²: not a chair seen side-on
     for i, lab in enumerate(lms.labels):
         if i in exclude or lab in NOT_BETWEEN:
             continue
         b = lms.boxes[i]
         if _in_box(u, b, 0.1) or _box_dist(o, b) < 0.25:
-            continue  # l'utilisateur est dessus, ou l'objet est contre (c'est son porteur)
+            continue  # the user is on it, or the object is against it (it is its carrier)
         c = lms.centers[i]
         if np.linalg.norm(c - u) >= d_uo:
             continue
@@ -203,7 +207,7 @@ def between_landmark(user_xy, obj_xy, lms, exclude=()) -> int | None:
 
 
 def pass_side(path_pts: np.ndarray, center: np.ndarray) -> str | None:
-    """Côté par lequel le chemin passe le meuble : « gauche » si le meuble est à sa droite."""
+    """Side by which the path passes the furniture: "left" if the furniture is on its right."""
     if path_pts is None or len(path_pts) < 3:
         return None
     k = int(np.argmin(np.linalg.norm(path_pts - center, axis=1)))
@@ -213,13 +217,13 @@ def pass_side(path_pts: np.ndarray, center: np.ndarray) -> str | None:
     cross = d[0] * v[1] - d[1] * v[0]
     if abs(cross) < 1e-6:
         return None
-    return "droite" if cross > 0 else "gauche"  # meuble à gauche (cross > 0) : on passe à droite
+    return "droite" if cross > 0 else "gauche"  # furniture on the left (cross > 0): we pass on the right
 
 
-# ------------------------------------------------------------------ file des phrases
+# ------------------------------------------------------------------ sentence queue
 class SpeechQueue:
-    """Phrases à dire, une à la fois : chacune reste `hold` secondes sur les consignes (pertes
-    de messages), avec un numéro unique (le téléphone ne dit chaque numéro qu'une fois)."""
+    """Sentences to speak, one at a time: each stays `hold` seconds on the instructions (message
+    losses), with a unique number (the phone only speaks each number once)."""
 
     def __init__(self, hold: float = 1.0) -> None:
         self.hold = float(hold)
@@ -233,7 +237,7 @@ class SpeechQueue:
             self.queue.append((text, duck))
 
     def current(self, t: float) -> tuple[str, int, bool]:
-        """Phrase à porter par la consigne de l'instant t : (texte, id, suspend le chemin)."""
+        """Sentence to be carried by the instruction at time t: (text, id, suspends the path)."""
         if self.cur is not None and (t - self.cur[3] >= self.hold or t < self.cur[3]):
             self.cur = None
         if self.cur is None and self.queue:
@@ -248,7 +252,7 @@ class SpeechQueue:
 
 # ------------------------------------------------------------------ narrateur
 class Narrator:
-    """Décide des phrases à dire ; `current(t)` donne la phrase en cours de diffusion."""
+    """Decides which sentences to speak; `current(t)` gives the sentence currently being played."""
 
     def __init__(
         self,
@@ -291,7 +295,7 @@ class Narrator:
         self.t_correction = -math.inf
         self.start_pending = announce_start
 
-    # -------------------------------------------------------------- file des phrases
+    # -------------------------------------------------------------- sentence queue
     def say(self, text: str, duck: bool = False) -> None:
         self.out.say(text, duck)
 
@@ -354,7 +358,7 @@ class Narrator:
             if s is not None:
                 return f"Le chemin contourne {the(lms.labels[btw])} par la {s}, suis le son."
         partial = np.linalg.norm(np.asarray(path.goal) - obj_xyz[:2]) > 0.9
-        # direction de départ : point du chemin à ~1 m
+        # starting direction: point of the path at ~1 m
         d = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
         k = int(np.searchsorted(d, min(1.0, d[-1])))
         az, _ = _ego(T_head, pts[min(k, len(pts) - 1)])
@@ -374,12 +378,12 @@ class Narrator:
 
     def approach_phrase(self, T_head, obj_xyz, path, lms) -> str:
         sup = support_of(obj_xyz, lms, self.margin)
-        # côté de l'objet quand on sera au bout du chemin, face à la direction d'arrivée
+        # side of the object when we reach the end of the path, facing the arrival direction
         az = None
         if path is not None and path.valid and len(path.points) >= 2:
             pts = np.asarray(path.points, float)
             goal = pts[-1]
-            # point du chemin 0,7 m avant la fin (abscisse curviligne)
+            # point of the path 0.7 m before the end (curvilinear abscissa)
             seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
             cum = np.r_[0.0, np.cumsum(seg)]
             sb = max(cum[-1] - 0.7, 0.0)
@@ -399,7 +403,7 @@ class Narrator:
         h = height_phrase(float(obj_xyz[2]))
         return f"Tu arrives, {self.spoken} {self._verb()} {where}" + (f", {h}." if h else ".")
 
-    # -------------------------------------------------------------- décision
+    # -------------------------------------------------------------- decision
     def update(self, t, state, T_head, obj, path, cm, lms, dist: float, obst_d: float) -> None:
         if not self.enabled:
             return
@@ -432,7 +436,7 @@ class Narrator:
                     duck=True,
                 )
             return
-        # objet annoncé ailleurs (cible probable fausse) : correction, une fois toutes les 8 s
+        # object announced elsewhere (false probable target): correction, once every 8 s
         if (
             np.linalg.norm(pos[:2] - self.found_pos[:2]) > self.moved_m
             and t - self.t_correction > 8.0
@@ -447,7 +451,7 @@ class Narrator:
             return
         if self.approach_said or state == "ARRIVED":
             if state == "ARRIVED":
-                self.approach_said = True  # arrivé sans annonce : le son d'arrivée suffit
+                self.approach_said = True  # arrived without announcement: the arrival sound is enough
             return
         sup = support_of(pos, lms, self.margin)
         near_support = (
@@ -461,7 +465,7 @@ class Narrator:
 
 
 def _occupied_below(cm, obj_xyz, r: float = 0.4) -> bool:
-    """Des cellules occupées autour de l'objet (un meuble sous lui, non reconnu) ?"""
+    """Occupied cells around the object (unrecognised furniture under it)?"""
     if cm is None:
         return False
     from visionaid.mapping.costmap import OCC

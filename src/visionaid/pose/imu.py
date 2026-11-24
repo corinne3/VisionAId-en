@@ -1,7 +1,7 @@
-"""IMU pour la pose : tampon corrigé (unités, biais, rotation, décalage) et filtre de gravité.
+"""IMU for the pose: corrected buffer (units, bias, rotation, offset) and gravity filter.
 
-Convention temporelle (phase 17) : l'image horodatée t correspond à l'instant IMU t + δ. Le tampon
-stocke les échantillons dans le **temps image** (t_imu − δ) et dans le **repère caméra**.
+Time convention (phase 17): the image timestamped t corresponds to the IMU instant t + δ. The buffer
+stores the samples in **image time** (t_imu − δ) and in the **camera frame**.
 """
 
 from __future__ import annotations
@@ -18,12 +18,12 @@ G = 9.81
 
 
 class ImuBuffer:
-    """Échantillons IMU corrigés, exprimés dans le repère caméra et le temps image."""
+    """Corrected IMU samples, expressed in the camera frame and image time."""
 
     def __init__(self, calib: ImuCalib, keep_s: float = 10.0, extrapolate_s: float = 0.05) -> None:
         self.R = np.asarray(calib.R_cam_imu, float)
-        # accéléromètre : rotation et signe propres (Safari iOS : axes du gyroscope permutés,
-        # signe de l'accéléromètre inversé ; les deux sont mesurés par la calibration)
+        # accelerometer: its own rotation and sign (Safari iOS: gyroscope axes permuted,
+        # accelerometer sign inverted; both are measured by the calibration)
         R_acc = getattr(calib, "R_cam_acc", None)
         self.R_acc = np.asarray(R_acc, float) if R_acc is not None else self.R
         self.acc_sign = float(getattr(calib, "accel_sign", 1.0))
@@ -33,14 +33,14 @@ class ImuBuffer:
         self.keep_s = keep_s
         self.extra = extrapolate_s
         self.t = np.zeros(0)
-        self.w = np.zeros((0, 3))  # rad/s, repère caméra
-        self.a = np.zeros((0, 3))  # m/s², repère caméra (gravité incluse : +g vers le haut)
+        self.w = np.zeros((0, 3))  # rad/s, camera frame
+        self.a = np.zeros((0, 3))  # m/s², camera frame (gravity included: +g upward)
 
     def __len__(self) -> int:
         return len(self.t)
 
     def add(self, batch: ImuBatch | None) -> None:
-        """Ajoute un lot (horloge téléphone, repère appareil, gyro dans l'unité annoncée)."""
+        """Adds a batch (phone clock, device frame, gyro in the announced unit)."""
         if batch is None or len(batch) == 0:
             return
         t = np.asarray(batch.t, float) - self.delta
@@ -60,7 +60,7 @@ class ImuBuffer:
         return len(self.t) >= 2 and t0 >= self.t[0] - self.extra and t1 <= self.t[-1] + self.extra
 
     def delta_R(self, t0: float, t1: float) -> np.ndarray | None:
-        """Rotation caméra R_c0_c1 entre les instants image t0 et t1 (intégration du gyroscope)."""
+        """Camera rotation R_c0_c1 between image instants t0 and t1 (gyroscope integration)."""
         if t1 <= t0:
             return np.eye(3)
         if not self.covers(t0, t1):
@@ -75,7 +75,7 @@ class ImuBuffer:
         return R
 
     def accel_mean(self, t0: float, t1: float) -> tuple[np.ndarray | None, float]:
-        """Accélération moyenne (repère caméra) sur [t0, t1] et son écart-type de norme."""
+        """Mean acceleration (camera frame) over [t0, t1] and the standard deviation of its norm."""
         if not len(self.t):
             return None, math.inf
         m = (self.t >= t0) & (self.t <= t1)
@@ -85,7 +85,7 @@ class ImuBuffer:
         return a.mean(0), float(np.linalg.norm(a, axis=1).std())
 
     def rate_deg_s(self, t0: float, t1: float) -> float:
-        """Vitesse angulaire maximale (deg/s) sur [t0, t1]."""
+        """Maximum angular velocity (deg/s) over [t0, t1]."""
         m = (self.t >= t0) & (self.t <= t1)
         if not m.any():
             return 0.0
@@ -93,10 +93,10 @@ class ImuBuffer:
 
 
 class GravityFilter:
-    """Direction « haut » dans le repère caméra : propagée par le gyroscope, corrigée par l'accéléromètre.
+    """"Up" direction in the camera frame: propagated by the gyroscope, corrected by the accelerometer.
 
-    Au repos, l'accéléromètre (gravité incluse) mesure +g selon le haut. La correction n'est
-    appliquée que si la norme est proche de g (marche modérée), avec un gain faible.
+    At rest, the accelerometer (gravity included) measures +g along up. The correction is only
+    applied if the norm is close to g (moderate walking), with a low gain.
     """
 
     def __init__(self, gain: float = 0.05, tolerance: float = 1.5) -> None:
@@ -119,7 +119,7 @@ class GravityFilter:
         return True
 
     def predict(self, R_prev_cur: np.ndarray | None) -> None:
-        """La caméra a tourné de R_prev_cur : le vecteur fixe « haut » change de coordonnées."""
+        """The camera turned by R_prev_cur: the fixed "up" vector changes coordinates."""
         if self.up is not None and R_prev_cur is not None:
             u = R_prev_cur.T @ self.up
             self.up = u / np.linalg.norm(u)
@@ -136,12 +136,12 @@ class GravityFilter:
 
 
 def gravity_aligned_rotation(up_cam: np.ndarray) -> np.ndarray:
-    """R_world_cam initiale : z monde = haut, x monde = axe optique projeté à l'horizontale."""
+    """Initial R_world_cam: world z = up, world x = optical axis projected onto the horizontal."""
     z = np.asarray(up_cam, float) / np.linalg.norm(up_cam)
     fwd = np.array([0.0, 0.0, 1.0])
     x = fwd - np.dot(fwd, z) * z
-    if np.linalg.norm(x) < 1e-6:  # caméra pointée vers le haut ou le bas
+    if np.linalg.norm(x) < 1e-6:  # camera pointing up or down
         x = np.array([1.0, 0.0, 0.0]) - z[0] * z
     x /= np.linalg.norm(x)
     y = np.cross(z, x)
-    return np.stack([x, y, z])  # lignes = axes monde exprimés en repère caméra
+    return np.stack([x, y, z])  # rows = world axes expressed in the camera frame

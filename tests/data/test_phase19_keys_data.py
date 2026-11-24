@@ -1,4 +1,4 @@
-"""Phase 19 (données) : détection des clés sur la session réelle `cles_piece` (informatif)."""
+"""Phase 19 (data): key detection on the real `cles_piece` session (informative)."""
 
 import pytest
 
@@ -16,7 +16,7 @@ def test_keys_detection_on_session():
 
     ss = [p for p in list_sessions(resolve_path(load_config().session.dir)) if "cles" in p.name]
     if not ss:
-        pytest.skip("Aucune session « cles_piece » (voir docs/checkpoint_enregistrements.md)")
+        pytest.skip("No \"cles_piece\" session (see docs/checkpoint_enregistrements.md)")
     cfg = load_config_for_target("où sont mes clés")
     refs = sorted(resolve_path(cfg.paths.ref_dir).glob(cfg.paths.ref_glob))
     dets, info = run_video_perception(cfg, ss[-1])
@@ -24,7 +24,7 @@ def test_keys_detection_on_session():
     seen_any = sum(len(d.boxes) > 0 for d in dets) / max(len(dets), 1)
     res = {
         "session": ss[-1].name,
-        "mode": "photos" if refs else "texte seul",
+        "mode": "photos" if refs else "text only",
         "n_refs": len(refs),
         "frames": len(dets),
         "confirmed_fraction": round(confirmed, 3),
@@ -32,5 +32,5 @@ def test_keys_detection_on_session():
     }
     update_report("keys", res)
     print(res)
-    # informatif : aucun seuil bloquant (objet difficile), seulement « le pipeline tourne »
+    # informative: no blocking threshold (difficult object), only "the pipeline runs"
     assert len(dets) > 0

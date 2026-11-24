@@ -1,12 +1,12 @@
-"""Démo sonore : scénario simulé du projet rendu en vidéo avec le son de guidage.
+"""Sound demo: the project's simulated scenario rendered as a video with the guidance sound.
 
-Pour chaque scénario (`sim.scenarios` : pièce, couloir, obstacle qui surgit), l'agent simulé suit
-les consignes ; on écrit la vidéo (vérité terrain à gauche, carte construite à droite, son joué en
-bas) et la piste stéréo produite par `AudioRenderer`, puis on les assemble.
+For each scenario (`sim.scenarios`: room, corridor, sudden obstacle), the simulated agent follows
+the instructions; we write the video (ground truth on the left, built map on the right, sound played
+at the bottom) and the stereo track produced by `AudioRenderer`, then put them together.
 
-Sorties : `outputs/demo_sons/<scénario>_<graine>.mp4` (vidéo + son) et `.wav`.
-Écoute au casque. Pour la vidéo réelle de l'appartement, utiliser `run_offline` (qui écrit
-`annotated_audio.mp4` avec les mêmes sons) : il demande les modèles de vision.
+Outputs: `outputs/demo_sons/<scenario>_<seed>.mp4` (video + sound) and `.wav`.
+Listen with headphones. For the real apartment video, use `run_offline` (which writes
+`annotated_audio.mp4` with the same sounds): it needs the vision models.
 
     uv run python -m visionaid.apps.demo_sound --scenario room:0 corridor:1 appearing:0
 """
@@ -27,10 +27,10 @@ from visionaid.utils.logging import get_logger
 log = get_logger("demo_sound")
 
 MODE_FR = {
-    "search": "recherche",
-    "guide": "chemin",
-    "lost": "reperage perdu : arrete-toi",
-    "arrived": "arrive",
+    "search": "search",
+    "guide": "path",
+    "lost": "tracking lost: stop",
+    "arrived": "arrived",
     "silent": "silence",
 }
 
@@ -38,25 +38,25 @@ MODE_FR = {
 def _side(az: float) -> str:
     d = round(math.degrees(az))
     if d == 0:
-        return "devant"
+        return "ahead"
     if abs(d) >= 179:
-        return "derriere"
-    return f"{abs(d)} deg {'gauche' if d > 0 else 'droite'}"
+        return "behind"
+    return f"{abs(d)} deg {'left' if d > 0 else 'right'}"
 
 
 def caption(cmd) -> str:
-    """Texte du son joué (ASCII : police OpenCV)."""
+    """Text of the sound played (ASCII: OpenCV font)."""
     m = MODE_FR.get(cmd.mode, cmd.mode)
     if cmd.mode == "search":
-        return f"Son : {m}, une note toutes les {cmd.interval_s:.2f} s"
+        return f"Sound: {m}, one note every {cmd.interval_s:.2f} s"
     if cmd.mode == "guide":
-        dist = f", objectif a {cmd.distance:.1f} m" if math.isfinite(cmd.distance) else ""
+        dist = f", goal at {cmd.distance:.1f} m" if math.isfinite(cmd.distance) else ""
         ob = ", OBSTACLE" if cmd.obstacle_db > -100 else ""
         return (
-            f"Son : {m} - direction {_side(cmd.azimuth)}{dist}, "
-            f"une note toutes les {cmd.interval_s:.2f} s{ob}"
+            f"Sound: {m} - direction {_side(cmd.azimuth)}{dist}, "
+            f"one note every {cmd.interval_s:.2f} s{ob}"
         )
-    return f"Son : {m}"
+    return f"Sound: {m}"
 
 
 def render_scenario(cfg, name: str, seed: int, out_dir: Path, fps: int = 10) -> dict:
@@ -68,7 +68,7 @@ def render_scenario(cfg, name: str, seed: int, out_dir: Path, fps: int = 10) -> 
     r = run_episode(cfg, world, seed, record=True)
     cues = list(r.cues)
     if r.success and cues and cues[-1].state != "ARRIVED":
-        # la simulation s'arrête dès 0,5 m (succès) : on émet la consigne d'arrivée qui suivrait
+        # the simulation stops at 0.5 m (success): we emit the arrival instruction that would follow
         last = cues[-1]
         cues.append(replace(last, t=last.t + 0.1, frame_idx=last.frame_idx + 1, state="ARRIVED"))
         r.frames.append((last.t + 0.1, *r.frames[-1][1:4], "ARRIVED", *r.frames[-1][5:]))
@@ -82,7 +82,7 @@ def render_scenario(cfg, name: str, seed: int, out_dir: Path, fps: int = 10) -> 
         fps=fps,
         captions=[caption(c) for c in cmds],
     )
-    duration = len(r.frames) / fps + 2.0  # 2 s de plus : le son d'arrivée se termine
+    duration = len(r.frames) / fps + 2.0  # 2 more seconds: the arrival sound finishes
     wav = stem.with_suffix(".wav")
     ar.write_wav(wav, ar.render(cues, cues[0].t if cues else 0.0, duration))
     out = stem.with_suffix(".mp4")
@@ -99,7 +99,7 @@ def render_scenario(cfg, name: str, seed: int, out_dir: Path, fps: int = 10) -> 
         )  # fmt: skip
         video.unlink(missing_ok=True)
     else:
-        log.warning("ffmpeg absent : vidéo muette et son séparé (%s)", wav)
+        log.warning("ffmpeg missing: silent video and separate sound (%s)", wav)
         out = video
     modes: dict[str, int] = {}
     for c in cmds:
@@ -122,9 +122,9 @@ def main(argv=None) -> list[dict]:
         "--scenario",
         nargs="+",
         default=["room:0", "corridor:1", "appearing:0"],
-        help="scénario[:graine] ; défaut : recherche puis guidage, obstacle, obstacle surgissant",
+        help="scenario[:seed]; default: search then guidance, obstacle, sudden obstacle",
     )
-    ap.add_argument("--out", default=None, help="dossier de sortie (défaut outputs/demo_sons)")
+    ap.add_argument("--out", default=None, help="output folder (default outputs/demo_sons)")
     a = ap.parse_args(argv)
     cfg = load_config()
     out = Path(a.out) if a.out else resolve_path(cfg.paths.outputs) / "demo_sons"
@@ -133,7 +133,7 @@ def main(argv=None) -> list[dict]:
     res = [render_scenario(cfg, name, seed, out) for name, seed in picks]
     for r in res:
         print(
-            f"{r['scenario']:10s} succès={r['success']} t={r['time_s']} s "
+            f"{r['scenario']:10s} success={r['success']} t={r['time_s']} s "
             f"collisions={r['collisions']} → {r['video']}"
         )
     return res

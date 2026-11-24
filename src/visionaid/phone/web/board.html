@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VisionAId — damier de calibration</title>
+<title>VisionAId — calibration checkerboard</title>
 <style>
   html,body { margin:0; height:100%; background:#fff; color:#000; font:16px system-ui,sans-serif; }
   #wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; }
@@ -17,7 +17,7 @@
   <p id="info"></p>
 </div>
 <script>
-  // Damier de calibration : `cols` × `rows` cases (coins intérieurs : (cols-1) × (rows-1)).
+  // Calibration checkerboard: `cols` × `rows` squares (inner corners: (cols-1) × (rows-1)).
   const q = new URLSearchParams(location.search);
   const cols = parseInt(q.get("cols") || "10", 10), rows = parseInt(q.get("rows") || "7", 10);
   const s = 100, svg = document.getElementById("board");
@@ -27,8 +27,8 @@
     if ((r + c) % 2 === 0) html += `<rect x="${(c + 1) * s}" y="${(r + 1) * s}" width="${s}" height="${s}" fill="#000"/>`;
   svg.innerHTML = html;
   document.getElementById("info").textContent =
-    `Damier ${cols}×${rows} cases (${cols - 1}×${rows - 1} coins intérieurs). ` +
-    `Plein écran, luminosité au maximum. Mesurez à la règle le côté d'une case et notez-le.`;
+    `Checkerboard ${cols}×${rows} squares (${cols - 1}×${rows - 1} inner corners). ` +
+    `Full screen, maximum brightness. Measure the side of one square with a ruler and write it down.`;
 </script>
 </body>
 </html>

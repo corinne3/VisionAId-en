@@ -1,4 +1,4 @@
-"""Phase 17 (données) : calibration sur les sessions réelles `*calib_camera*` et `*calib_imu*`."""
+"""Phase 17 (data): calibration on the real sessions `*calib_camera*` and `*calib_imu*`."""
 
 import pytest
 
@@ -12,7 +12,7 @@ pytestmark = [pytest.mark.data, pytest.mark.slow]
 def _find(tag):
     ss = [p for p in list_sessions(resolve_path(load_config().session.dir)) if tag in p.name]
     if not ss:
-        pytest.skip(f"Aucune session « {tag} » (voir docs/checkpoint_enregistrements.md)")
+        pytest.skip(f"No \"{tag}\" session (see docs/checkpoint_enregistrements.md)")
     return ss[-1]
 
 

@@ -1,4 +1,4 @@
-"""Agrégation des métriques dans outputs/report.json (fusion par section)."""
+"""Aggregation of the metrics in outputs/report.json (merge by section)."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _clean(o: Any) -> Any:
 
 
 def update_report(section: str, data: dict) -> dict:
-    """Fusionne `data` dans la section `section` du rapport."""
+    """Merges `data` into the section `section` of the report."""
     p = report_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     rep = json.loads(p.read_text()) if p.exists() else {}
@@ -41,7 +41,7 @@ def update_report(section: str, data: dict) -> dict:
 
 
 def file_hash(path: str | Path, extra: str = "") -> str:
-    """Empreinte courte d'un fichier (taille + premiers/derniers Mo) et d'une chaîne de config."""
+    """Short fingerprint of a file (size + first/last MB) and of a config string."""
     p = Path(path)
     h = hashlib.sha1()
     h.update(str(p.stat().st_size).encode())

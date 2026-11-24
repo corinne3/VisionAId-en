@@ -46,7 +46,7 @@ def test_lost_fraction(vo_run):
 
 
 def test_forward_backward_consistency(video_path, cfg):
-    """Segment de 10 s lu à l'endroit puis à l'envers : la pose finale revient près du départ."""
+    """10 s segment read forwards then backwards: the final pose comes back near the start."""
     src = VideoFileSource.from_config(cfg)
     n = int(round(10 * src.fps))
     start = max(0, (src.frame_count - n) // 2)

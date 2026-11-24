@@ -12,7 +12,7 @@ BOX_B = np.array([220, 60, 260, 160], float)
 
 
 def run(tracker, seq):
-    """seq : liste de listes (box, reid_score) par frame → liste des target_track_id."""
+    """seq: list of lists (box, reid_score) per frame → list of target_track_id."""
     out = []
     for k, items in enumerate(seq):
         det = StubDetector({k: [(b, 0.9, "bottle") for b, _ in items]}).detect(IMG, k / 30, k)
@@ -30,8 +30,8 @@ def test_confirmation_after_n_frames(cfg):
     tr = TargetTracker(cfg, threshold=0.6)
     res = run(tr, [[(BOX_A, 0.8)]] * 5)
     ids = [r[0] for r in res]
-    assert ids[:2] == [-1, -1]  # pas encore confirmée
-    assert ids[2] > 0 and len(set(ids[2:])) == 1  # confirmée à la 3e frame
+    assert ids[:2] == [-1, -1]  # not confirmed yet
+    assert ids[2] > 0 and len(set(ids[2:])) == 1  # confirmed at the 3rd frame
     assert res[3][1] == 0
 
 
@@ -53,11 +53,11 @@ def test_loss_after_m_frames_and_reacquisition(cfg):
     res = run(tr, seq)
     tid = res[4][0]
     assert tid > 0
-    assert all(r[0] == tid for r in res[5:])  # 9 frames sans détection : encore confirmée (mémoire)
-    assert all(r[1] == -1 for r in res[5:])  # mais pas d'index de détection
+    assert all(r[0] == tid for r in res[5:])  # 9 frames without detection: still confirmed (memory)
+    assert all(r[1] == -1 for r in res[5:])  # but no detection index
     res2 = run(tr, [[]] * 2)
-    assert res2[-1][0] == -1  # perdue après 10 frames
-    # réacquisition : nouvelle confirmation après N frames
+    assert res2[-1][0] == -1  # lost after 10 frames
+    # reacquisition: new confirmation after N frames
     res3 = run(tr, [[(BOX_B, 0.85)]] * 4)
     assert [r[0] for r in res3][:2] == [-1, -1]
     assert res3[2][0] > 0
@@ -111,7 +111,7 @@ def test_masked_crop_bounds():
 
 
 def test_confirmed_track_does_not_jump_to_neighbour(cfg):
-    """Cible manquée + voisin d'apparence incompatible : la piste ne saute pas dessus."""
+    """Missed target + neighbour with incompatible appearance: the track does not jump onto it."""
     tr = TargetTracker(cfg, threshold=0.6)
     near = BOX_A + np.array([25, 0, 25, 0])
     res = run(tr, [[(BOX_A, 0.8)]] * 4 + [[(near, 0.2)]] * 5)

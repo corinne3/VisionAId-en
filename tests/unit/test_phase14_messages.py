@@ -1,4 +1,4 @@
-"""Phase 14 : nouveaux messages (IMU, horloge) et compatibilité de `Frame`."""
+"""Phase 14: new messages (IMU, clock) and `Frame` compatibility."""
 
 import numpy as np
 import pytest

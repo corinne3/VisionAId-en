@@ -1,4 +1,4 @@
-"""Outils de rotation : exponentielle/logarithme SO(3), Kabsch, rotation visuelle entre deux images."""
+"""Rotation tools: SO(3) exponential/logarithm, Kabsch, visual rotation between two images."""
 
 from __future__ import annotations
 
@@ -13,19 +13,19 @@ def skew(w: np.ndarray) -> np.ndarray:
 
 
 def so3_exp(w: np.ndarray) -> np.ndarray:
-    """Matrice de rotation du vecteur de rotation `w` (rad)."""
+    """Rotation matrix of the rotation vector `w` (rad)."""
     R, _ = cv2.Rodrigues(np.asarray(w, float).reshape(3, 1))
     return R
 
 
 def so3_log(R: np.ndarray) -> np.ndarray:
-    """Vecteur de rotation (rad) d'une matrice de rotation."""
+    """Rotation vector (rad) of a rotation matrix."""
     w, _ = cv2.Rodrigues(np.asarray(R, float))
     return w.ravel()
 
 
 def rotation_angle_deg(R: np.ndarray) -> float:
-    """Angle (degrés) d'une rotation."""
+    """Angle (degrees) of a rotation."""
     return float(np.degrees(np.linalg.norm(so3_log(R))))
 
 
@@ -42,17 +42,17 @@ def kabsch(a: np.ndarray, b: np.ndarray, w: np.ndarray | None = None) -> np.ndar
 
 
 def bearings(pts: np.ndarray, K: np.ndarray) -> np.ndarray:
-    """Pixels (N,2) → vecteurs unitaires dans le repère caméra."""
+    """Pixels (N,2) → unit vectors in the camera frame."""
     p = np.c_[pts, np.ones(len(pts))] @ np.linalg.inv(K).T
     return p / np.linalg.norm(p, axis=1, keepdims=True)
 
 
 class VisualRotation:
-    """Rotation de la caméra entre deux images (modèle rotation pure, RANSAC sur les directions).
+    """Camera rotation between two images (pure rotation model, RANSAC on the directions).
 
-    Renvoie R_c2_c1 tel que b2 ≈ R b1 pour un point lointain : la caméra a tourné de
-    R_c1_c2 = Rᵀ, soit un vecteur de rotation ω·dt = −log(R) dans le repère caméra. Robuste à une
-    petite translation (seuil angulaire lâche), suffisant pour comparer au gyroscope.
+    Returns R_c2_c1 such that b2 ≈ R b1 for a distant point: the camera turned by
+    R_c1_c2 = Rᵀ, i.e. a rotation vector ω·dt = −log(R) in the camera frame. Robust to a
+    small translation (loose angular threshold), enough to compare with the gyroscope.
     """
 
     def __init__(self, n_features: int = 1000, thresh_deg: float = 0.6, iters: int = 200) -> None:
@@ -67,7 +67,7 @@ class VisualRotation:
         return self.orb.detectAndCompute(g, None)
 
     def estimate(self, f1, f2, K: np.ndarray) -> tuple[np.ndarray | None, int]:
-        """Rotation entre deux jeux de caractéristiques (kp, desc) ; (None, 0) si échec."""
+        """Rotation between two sets of features (kp, desc); (None, 0) on failure."""
         (k1, d1), (k2, d2) = f1, f2
         if d1 is None or d2 is None or len(k1) < 8 or len(k2) < 8:
             return None, 0
@@ -98,7 +98,7 @@ class VisualRotation:
         return R, int(inl.sum())
 
     def angular_velocity(self, img1, img2, K, dt: float) -> tuple[np.ndarray | None, int]:
-        """Vitesse angulaire moyenne (rad/s, repère caméra) entre deux images."""
+        """Mean angular velocity (rad/s, camera frame) between two images."""
         R, n = self.estimate(self.features(img1), self.features(img2), K)
         if R is None or dt <= 0:
             return None, 0

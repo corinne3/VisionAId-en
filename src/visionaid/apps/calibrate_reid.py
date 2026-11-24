@@ -1,5 +1,5 @@
-"""Calibre le seuil de ré-identification (max F1) : positifs = augmentations des références,
-négatifs = crops d'autres objets détectés dans la vidéo."""
+"""Calibrates the re-identification threshold (max F1): positives = augmentations of the references,
+negatives = crops of other objects detected in the video."""
 
 from __future__ import annotations
 
@@ -26,33 +26,33 @@ log = get_logger("calibrate")
 
 
 def build_reid(cfg, detector=None) -> tuple[TargetReID, list, YoloDetector]:
-    """Détecteur + ReID avec galerie construite sur les photos de référence.
+    """Detector + ReID with a gallery built on the reference photos.
 
-    Sans photo de référence pour la cible : ReID « texte seul » (confiance du détecteur).
+    Without a reference photo for the target: "text only" ReID (detector confidence).
     """
     det = detector or YoloDetector(cfg)
     if bool(getattr(cfg.reid, "text_only", False)):
-        # mode démo : un seul objet de cette catégorie dans la pièce ; toute détection du
-        # prompt texte est la cible (pas de photos de référence ni de règle de couleur)
+        # demo mode: a single object of this category in the room; any detection of the
+        # text prompt is the target (no reference photos and no colour rule)
         return TextOnlyReID(cfg), [], det
     refs = sorted(resolve_path(cfg.paths.ref_dir).glob(cfg.paths.ref_glob))
     if not refs:
         log.warning(
-            "Aucune photo de référence (%s/%s) : cible reconnue par le texte seul",
+            "No reference photo (%s/%s): target recognised by text alone",
             cfg.paths.ref_dir,
             cfg.paths.ref_glob,
         )
         return TextOnlyReID(cfg), [], det
     rc = reference_crops(cfg, det, refs)
     if not rc:
-        raise RuntimeError("Aucune référence exploitable")
+        raise RuntimeError("No usable reference")
     reid = TargetReID(cfg)
     reid.build_gallery([(c, m) for c, m, _ in rc])
     return reid, rc, det
 
 
 def positive_items(ref_crops, n_aug: int, seed: int = 1) -> list[tuple[np.ndarray, np.ndarray]]:
-    """Augmentations (avec occultation) des crops de référence ; masque = pixels non-fond."""
+    """Augmentations (with occlusion) of the reference crops; mask = non-background pixels."""
     from visionaid.perception.reid import BG_COLOR
 
     rng = np.random.default_rng(seed)
@@ -68,18 +68,18 @@ def positive_items(ref_crops, n_aug: int, seed: int = 1) -> list[tuple[np.ndarra
 
 
 def collect_negatives(cfg, video: Path, step: int = 5, cache: bool = True) -> list[dict]:
-    """Crops (masqués) d'objets détectés avec le prompt large, toutes les `step` frames."""
+    """(Masked) crops of objects detected with the broad prompt, every `step` frames."""
     from visionaid.io.session import open_media
 
     tag = "_".join(cfg.detector.negative_prompts)[:40].replace(" ", "-")
     cpath = resolve_path(cfg.paths.cache) / "reid" / f"negatives_{video.stem}_{step}_{tag}.pkl"
     legacy = resolve_path(cfg.paths.cache) / "reid" / f"negatives_{video.stem}_{step}.pkl"
     if cache and not cpath.exists() and legacy.exists() and str(cfg.target.name) == "gourde":
-        cpath = legacy  # cache de la phase 3 (prompts de la gourde)
+        cpath = legacy  # phase 3 cache (bottle prompts)
     if cache and cpath.exists():
         return pickle.loads(cpath.read_bytes())
     det = YoloDetector(cfg, prompts=list(cfg.detector.negative_prompts))
-    src = open_media(cfg, video)  # vidéo ou session téléphone
+    src = open_media(cfg, video)  # video or phone session
     items = []
     while (f := src.read()) is not None:
         if f.frame_idx % step:
@@ -100,10 +100,10 @@ def collect_negatives(cfg, video: Path, step: int = 5, cache: bool = True) -> li
 def split_negatives(
     reid: TargetReID, items: list[dict], exclude_sim: float = 0.60, exclude_sim_color: float = 0.45
 ) -> tuple[list[dict], list[dict]]:
-    """Exclut des négatifs les crops trop similaires à la référence (la gourde est dans la vidéo).
+    """Excludes from the negatives the crops too similar to the reference (the bottle is in the video).
 
-    Règle : similarité d'embedding ≥ `exclude_sim`, ou ≥ `exclude_sim_color` avec un score de
-    proportions de couleur ≥ 0,5 (gris + orange).
+    Rule: embedding similarity ≥ `exclude_sim`, or ≥ `exclude_sim_color` with a colour
+    proportion score ≥ 0.5 (grey + orange).
     """
     if not items:
         return [], []
@@ -122,7 +122,7 @@ def split_negatives(
 
 
 def best_f1_threshold(pos: np.ndarray, neg: np.ndarray) -> tuple[float, dict]:
-    """Seuil maximisant F1 (à égalité, le plus haut : moins de faux positifs)."""
+    """Threshold maximising F1 (on a tie, the highest one: fewer false positives)."""
     cands = np.unique(np.concatenate([pos, neg]))
     best = (-1.0, 0.5, {})
     for th in cands:
@@ -133,7 +133,7 @@ def best_f1_threshold(pos: np.ndarray, neg: np.ndarray) -> tuple[float, dict]:
         if f1 >= best[0]:
             best = (f1, float(th), {"tp": tp, "fp": fp, "fn": fn})
     f1, th, c = best
-    # place le seuil à mi-chemin entre le positif retenu et le négatif juste en dessous
+    # puts the threshold halfway between the kept positive and the negative just below
     below = neg[neg < th]
     if below.size:
         th = 0.5 * (th + float(below.max()))
@@ -149,19 +149,19 @@ def main(argv: list[str] | None = None) -> dict:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default=None)
     ap.add_argument("--step", type=int, default=5)
-    ap.add_argument("--target", default=None, help="prompt fixe, ex. « où sont mes clés »")
+    ap.add_argument("--target", default=None, help="fixed prompt, e.g. « où sont mes clés »")
     ap.add_argument(
         "--negatives",
         default=None,
-        help="vidéo ou session d'où tirer les négatifs (défaut : vidéo)",
+        help="video or session to draw the negatives from (default: video)",
     )
     args = ap.parse_args(argv)
     cfg = load_config(args.config, {"target.query": args.target} if args.target else None)
     reid, rc, _det = build_reid(cfg)
     if getattr(reid, "text_only", False):
         raise SystemExit(
-            f"Pas de photo de référence ({cfg.paths.ref_glob}) : rien à calibrer pour "
-            f"« {cfg.target.name} » (mode texte seul, seuil reid.textonly_conf)."
+            f"No reference photo ({cfg.paths.ref_glob}): nothing to calibrate for "
+            f"\"{cfg.target.name}\" (text-only mode, threshold reid.textonly_conf)."
         )
     pos_items = positive_items(rc, int(cfg.reid.n_calib_aug))
     pos = reid.score_crops(pos_items)
@@ -189,7 +189,7 @@ def main(argv: list[str] | None = None) -> dict:
     }
     path = resolve_path(cfg.reid.threshold_file)
     path.write_text(yaml.safe_dump(out, sort_keys=False, allow_unicode=True))
-    log.info("Seuil ReID : %s", json.dumps(out))
+    log.info("ReID threshold: %s", json.dumps(out))
     return out
 
 

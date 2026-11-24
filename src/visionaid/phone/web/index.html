@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>VisionAId — capteur</title>
+<title>VisionAId — sensor</title>
 <style>
   :root { --bg:#111; --fg:#f2f2f2; --muted:#9a9a9a; --ok:#3ccf6e; --warn:#f0b429; --err:#ff5c5c; --accent:#ff8a1f; }
   * { box-sizing:border-box; }
@@ -41,39 +41,39 @@
 </head>
 <body>
 <main>
-  <h1>VisionAId — capteur</h1>
-  <div id="status">Prêt. Fixez le téléphone sur le torse, écran vers vous, branchez le casque, puis appuyez sur Démarrer.</div>
-  <button id="start">Démarrer</button>
+  <h1>VisionAId — sensor</h1>
+  <div id="status">Ready. Attach the phone to your chest, screen facing you, connect the headset, then tap Start.</div>
+  <button id="start">Start</button>
   <div id="voiceBox" hidden>
-    <button id="talk" disabled aria-label="Parler : dire l'objet cherché">🎤 Parler</button>
+    <button id="talk" disabled aria-label="Talk: say the object you are looking for">🎤 Talk / Parler</button>
     <div id="heard" aria-live="polite"></div>
     <div class="typed">
-      <input id="typed" type="text" placeholder="ou écrire : je cherche ma gourde" autocomplete="off">
-      <button id="sendTyped" class="secondary">Envoyer</button>
+      <input id="typed" type="text" placeholder="or type: je cherche ma gourde" autocomplete="off">
+      <button id="sendTyped" class="secondary">Send</button>
     </div>
   </div>
   <div class="grid">
-    <div><b id="fps">–</b><span>images/s reçues par le PC</span></div>
-    <div><b id="imu">–</b><span>IMU (Hz) reçue</span></div>
-    <div><b id="rtt">–</b><span>aller-retour (ms)</span></div>
-    <div><b id="age">–</b><span>âge des images (ms)</span></div>
+    <div><b id="fps">–</b><span>frames/s received by the computer</span></div>
+    <div><b id="imu">–</b><span>IMU (Hz) received</span></div>
+    <div><b id="rtt">–</b><span>round trip (ms)</span></div>
+    <div><b id="age">–</b><span>frame age (ms)</span></div>
   </div>
   <div class="sound">
-    <div><b>Son</b> <span id="sound">Mettez le casque, puis appuyez sur Démarrer.</span></div>
+    <div><b>Sound</b> <span id="sound">Put on the headset, then tap Start.</span></div>
     <label for="volume">Volume <output id="volumeOut"></output></label>
     <input type="range" id="volume" min="-24" max="12" step="1" value="0">
-    <button id="testSound" class="secondary" disabled>Tester le son (gauche, droite, devant)</button>
+    <button id="testSound" class="secondary" disabled>Test the sound (left, right, front)</button>
   </div>
   <div id="level"><div id="bubble"></div></div>
-  <div id="levelText">Niveau : téléphone vertical attendu (bulle au centre).</div>
+  <div id="levelText">Level: phone upright expected (bubble in the centre).</div>
   <video id="video" playsinline muted autoplay></video>
-  <label><input type="checkbox" id="calibMode"> Mode calibration (damier)</label>
+  <label><input type="checkbox" id="calibMode"> Calibration mode (checkerboard)</label>
   <div class="row">
-    <button id="capture" class="secondary" disabled>Capturer une vue</button>
-    <button id="stop" class="secondary" disabled>Arrêter</button>
+    <button id="capture" class="secondary" disabled>Capture a view</button>
+    <button id="stop" class="secondary" disabled>Stop</button>
   </div>
-  <textarea id="notes" rows="2" placeholder="Notes pour la session (chauffe, coupures, gêne du support…)"></textarea>
-  <button id="sendNotes" class="secondary" disabled>Envoyer les notes</button>
+  <textarea id="notes" rows="2" placeholder="Notes for the session (heating, dropouts, discomfort of the holder…)"></textarea>
+  <button id="sendNotes" class="secondary" disabled>Send notes</button>
   <div id="log"></div>
 </main>
 <script src="/static/audio.js"></script>

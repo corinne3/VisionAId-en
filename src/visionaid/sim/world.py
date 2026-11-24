@@ -1,4 +1,4 @@
-"""Monde 2D vérité terrain (vue de dessus) et capteur simulé."""
+"""Ground-truth 2D world (top-down view) and simulated sensor."""
 
 from __future__ import annotations
 
@@ -11,17 +11,17 @@ from scipy.ndimage import distance_transform_edt
 
 @dataclass
 class SimWorld:
-    """Grille d'occupation vérité terrain + objet + départ."""
+    """Ground-truth occupancy grid + object + start."""
 
     occ: np.ndarray  # (H,W) bool, True = obstacle
-    origin: np.ndarray  # (2,) coin (x,y) de la cellule (0,0)
+    origin: np.ndarray  # (2,) (x,y) corner of cell (0,0)
     res: float
-    obj: np.ndarray  # (3,) position de l'objet
+    obj: np.ndarray  # (3,) position of the object
     start: np.ndarray  # (3,) x, y, cap (rad)
     name: str = ""
-    known_object: bool = False  # l'objet est déjà en mémoire au départ
+    known_object: bool = False  # the object is already in memory at the start
     events: list = field(default_factory=list)  # (t, kind, data)
-    obj_support: np.ndarray | None = None  # boîte (x0,y0,x1,y1) du meuble portant l'objet
+    obj_support: np.ndarray | None = None  # box (x0,y0,x1,y1) of the furniture carrying the object
     _dist: np.ndarray | None = None
 
     def cell(self, xy: np.ndarray) -> tuple[int, int]:
@@ -38,7 +38,7 @@ class SimWorld:
 
     @property
     def dist(self) -> np.ndarray:
-        """Distance (m) de chaque cellule à l'obstacle le plus proche."""
+        """Distance (m) from each cell to the closest obstacle."""
         if self._dist is None:
             self._dist = distance_transform_edt(~self.occ) * self.res
         return self._dist
@@ -56,7 +56,7 @@ class SimWorld:
         self._dist = None
 
     def raycast(self, xy: np.ndarray, angle: float, max_range: float) -> float:
-        """Distance au premier obstacle le long d'un rayon (max_range si aucun)."""
+        """Distance to the first obstacle along a ray (max_range if none)."""
         step = self.res * 0.5
         n = int(max_range / step)
         d = np.arange(1, n + 1) * step
@@ -74,7 +74,7 @@ class SimWorld:
     def visible(
         self, xy: np.ndarray, target: np.ndarray, heading: float, fov_deg: float, max_range: float
     ) -> bool:
-        """L'objet est-il dans le champ, à portée et en ligne de vue (le meuble porteur ne masque pas)?"""
+        """Is the object in the field of view, in range and in line of sight (the carrying furniture does not hide it)?"""
         v = target[:2] - xy
         d = float(np.linalg.norm(v))
         if d > max_range or d < 1e-6:
@@ -86,12 +86,12 @@ class SimWorld:
         ):
             return False
         free_d = self.raycast(xy, ang, d)
-        # l'objet est posé sur un meuble : le rayon peut toucher ce meuble juste avant l'objet
+        # the object is on a piece of furniture: the ray may hit that furniture just before the object
         return free_d >= d - 0.6 if self.obj_support is not None else free_d >= d - self.res
 
 
 class SimSensor:
-    """Capteur de profondeur simulé : cône horizontal, portée, bruit → nuage de points (monde)."""
+    """Simulated depth sensor: horizontal cone, range, noise → point cloud (world)."""
 
     def __init__(self, cfg_sim, rng: np.random.Generator, n_rays: int = 71) -> None:
         self.fov = math.radians(float(cfg_sim.fov_deg))
@@ -106,11 +106,11 @@ class SimSensor:
         for a in heading + np.linspace(-self.fov / 2, self.fov / 2, self.n_rays):
             d = world.raycast(xy, a, self.range)
             c, s = math.cos(a), math.sin(a)
-            # sol libre visible : de 0,8 m (le sol tout proche est hors champ) jusqu'à l'obstacle
+            # visible free floor: from 0.8 m (the floor very close is out of view) up to the obstacle
             for r in np.arange(0.8, d - 0.1, 0.15):
                 pts.append((x + r * c, y + r * s, self.rng.normal(0, self.noise)))
             if d < self.range:
-                for z in (0.3, 0.7, 1.2):  # face verticale de l'obstacle
+                for z in (0.3, 0.7, 1.2):  # vertical face of the obstacle
                     rr = d + abs(self.rng.normal(0, self.noise))
                     pts.append(
                         (

@@ -1,8 +1,8 @@
-"""D* Lite (Koenig & Likhachev 2002, version optimisée) sur grille 8-connexe, noyaux numba.
+"""D* Lite (Koenig & Likhachev 2002, optimised version) on an 8-connected grid, numba kernels.
 
-Même modèle de coût que A* : pas a → b = longueur × (1 + (c[a] + c[b]) / 2), pas de coupe de coin.
-La recherche part du but ; le départ (l'utilisateur) peut bouger et les coûts changer entre deux
-appels à `plan()`, seules les zones affectées sont recalculées.
+Same cost model as A*: step a → b = length × (1 + (c[a] + c[b]) / 2), no corner cutting.
+The search starts from the goal; the start (the user) can move and the costs change between two
+calls to `plan()`, only the affected areas are recomputed.
 """
 
 from __future__ import annotations
@@ -228,7 +228,7 @@ def _extract(cc, h, w, g, start, goal, max_len):
 
 
 class DStarLite:
-    """Planificateur incrémental. `set_costs()` puis `plan(start)` à chaque cycle."""
+    """Incremental planner. `set_costs()` then `plan(start)` at each cycle."""
 
     def __init__(self, cell_cost: np.ndarray, goal: tuple[int, int]) -> None:
         self.h, self.w = cell_cost.shape
@@ -263,7 +263,7 @@ class DStarLite:
                 setattr(self, name, new)
 
     def set_costs(self, cell_cost: np.ndarray) -> int:
-        """Remplace la grille de coûts ; ne met à jour que les cellules modifiées. Retourne leur nombre."""
+        """Replaces the cost grid; only updates the modified cells. Returns their number."""
         new = np.ascontiguousarray(cell_cost, np.float64).ravel()
         diff = ~((new == self.cc) | (np.isinf(new) & np.isinf(self.cc)))
         cells = np.nonzero(diff)[0].astype(np.int64)

@@ -1,4 +1,4 @@
-"""Bloc source du bus alimenté par le téléphone : dernière image + IMU accumulée depuis l'appel précédent."""
+"""Bus source block fed by the phone: latest image + IMU accumulated since the previous call."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from visionaid.utils.config import _to_dataclass
 
 
 def merge_batches(batches: list[ImuBatch]) -> ImuBatch | None:
-    """Concatène des lots IMU (triés par temps), ou None si vide."""
+    """Concatenates IMU batches (sorted by time), or None if empty."""
     batches = [b for b in batches if len(b)]
     if not batches:
         return None
@@ -29,9 +29,9 @@ def merge_batches(batches: list[ImuBatch]) -> ImuBatch | None:
 
 
 class PhoneInbox:
-    """Tampon thread-safe entre le serveur (rappels) et un consommateur synchrone.
+    """Thread-safe buffer between the server (callbacks) and a synchronous consumer.
 
-    Ne garde que la **dernière** image (pas d'accumulation de retard), mais toute l'IMU.
+    Only keeps the **latest** image (no delay build-up), but all the IMU.
     """
 
     def __init__(self) -> None:
@@ -60,7 +60,7 @@ class PhoneInbox:
             self._clock = c
 
     def get(self, timeout: float = 0.1) -> tuple[Frame | None, ImuBatch | None, ClockSync | None]:
-        """Attend une nouvelle image (au plus `timeout`) ; renvoie (image, IMU, horloge)."""
+        """Waits for a new image (at most `timeout`); returns (image, IMU, clock)."""
         with self._cond:
             if self._frame is None:
                 self._cond.wait(timeout)
@@ -73,17 +73,17 @@ class PhoneInbox:
 
 
 class CommandDesk:
-    """Demandes de l'utilisateur reçues du téléphone → `VoiceCommand` numérotées.
+    """User requests received from the phone → numbered `VoiceCommand`s.
 
-    Texte (reconnaissance de Safari, ou saisie) : résolu tout de suite ; son enregistré :
-    transcrit par Whisper dans un fil dédié (le serveur n'attend pas).
+    Text (Safari recognition, or typed): resolved immediately; recorded sound:
+    transcribed by Whisper in a dedicated thread (the server does not wait).
     """
 
     def __init__(self, raw: dict, reply=None) -> None:
         c = raw.get("command") or {}
         self.sheets_dir = (raw.get("target") or {}).get("sheets_dir")
         self.stt_backend = str(c.get("stt", "whisper"))
-        self.reply = reply  # rappel (dict) : ce qui a été compris, affiché sur le téléphone
+        self.reply = reply  # callback (dict): what was understood, shown on the phone
         self._lock = threading.Lock()
         self.pending: list = []
         self.current = None
@@ -99,7 +99,7 @@ class CommandDesk:
             ).preload()
 
     def on_message(self, obj: dict) -> None:
-        """Rappel du serveur (fil du serveur)."""
+        """Server callback (server thread)."""
         if obj.get("type") == "command_audio":
             import base64
 
@@ -124,7 +124,7 @@ class CommandDesk:
         self.submit([text], source="whisper")
 
     def submit(self, texts: list[str], source: str = "") -> None:
-        """Phrase(s) reconnue(s) → nouvelle demande."""
+        """Recognised phrase(s) → new request."""
         from visionaid.bus.messages import VoiceCommand
         from visionaid.perception.target import parse_command
 
@@ -154,7 +154,7 @@ class CommandDesk:
             self.reply({"type": "heard", "text": text, "action": action, "target": cmd.target})
 
     def pop(self):
-        """Prochaine demande à publier (ou None)."""
+        """Next request to publish (or None)."""
         with self._lock:
             if self.pending:
                 self.current = self.pending.pop(0)
@@ -163,8 +163,8 @@ class CommandDesk:
 
 
 class PhoneSourceBlock:
-    """Source du graphe temps réel : démarre le serveur et publie `frame`, `imu`, `clock`,
-    et `command` (demandes dites par l'utilisateur, mode `stt`)."""
+    """Source of the real-time graph: starts the server and publishes `frame`, `imu`, `clock`,
+    and `command` (requests spoken by the user, `stt` mode)."""
 
     def __init__(self, raw: dict, record: str | None = None) -> None:
         cfg = _to_dataclass("config", raw)
@@ -204,7 +204,7 @@ class PhoneSourceBlock:
         self._last_sound = None
 
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None:
-        snd = inputs.get("sound")  # consigne sonore du nœud de guidage → téléphone
+        snd = inputs.get("sound")  # sound instruction from the guidance node → phone
         if snd is not None and snd is not self._last_sound:
             self._last_sound = snd
             self.server.send_sound(snd)
@@ -218,11 +218,11 @@ class PhoneSourceBlock:
             cmd = self.desk.pop()
             now = time.time()
             if cmd is None and self.desk.current is not None and now - self._t_cmd >= self.repeat_s:
-                cmd = self.desk.current  # republiée : un nœud lent à démarrer ne la rate pas
+                cmd = self.desk.current  # republished: a node slow to start does not miss it
             if cmd is not None:
                 self._t_cmd = now
                 out["command"] = cmd
-        if imu is not None:  # l'IMU part avant l'image qu'elle précède
+        if imu is not None:  # the IMU goes before the image it precedes
             out["imu"] = imu
         if c is not None:
             out["clock"] = c

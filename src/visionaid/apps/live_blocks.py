@@ -1,4 +1,4 @@
-"""Blocs du graphe « téléphone → chemin » (phase 20), importables par les sous-processus du bus."""
+"""Blocks of the "phone → path" graph (phase 20), importable by the bus subprocesses."""
 
 from __future__ import annotations
 
@@ -19,18 +19,18 @@ def _cfg(raw: dict):
 
 # ---------------------------------------------------------------------------- source
 def make_phone_source(raw: dict):
-    """Serveur téléphone (direct ou faux téléphone piloté par le processus principal)."""
+    """Phone server (live, or fake phone driven by the main process)."""
     from visionaid.phone.block import PhoneSourceBlock
 
     return PhoneSourceBlock(raw)
 
 
-# ---------------------------------------------------------------------------- modèles (ou stubs)
+# ---------------------------------------------------------------------------- models (or stubs)
 STUB_BOX = np.array([150, 300, 175, 360], float)
 
 
 def stub_scene_depth(h: int, w: int, K: np.ndarray, pitch_deg: float = 20.0, cam_h: float = 1.4):
-    """Profondeur d'un sol vu par une caméra inclinée, mur à 5 m (tests sans modèle)."""
+    """Depth of a floor seen by a tilted camera, wall at 5 m (tests without model)."""
     v, _u = np.mgrid[0:h, 0:w]
     y = (v - K[1, 2]) / K[1, 1]
     p = math.radians(pitch_deg)
@@ -40,17 +40,17 @@ def stub_scene_depth(h: int, w: int, K: np.ndarray, pitch_deg: float = 20.0, cam
 
 
 def make_live_perception(raw: dict):
-    """Perception réelle, ou stub (boîte fixe, ReID texte seul) si `_stub_models`."""
+    """Real perception, or stub (fixed box, text-only ReID) if `_stub_models`."""
     return LivePerceptionBlock(raw)
 
 
 def stt_mode(raw: dict) -> bool:
-    """Demande dite par l'utilisateur (aucune cible avant la première demande)."""
+    """Request spoken by the user (no target before the first request)."""
     return str(raw.get("_command_mode") or (raw.get("command") or {}).get("mode")) == "stt"
 
 
 class LivePerceptionBlock:
-    """Perception + changement de cible à chaque demande (sujet `command`)."""
+    """Perception + target change at each request (`command` topic)."""
 
     def __init__(self, raw: dict) -> None:
         from visionaid.perception.pipeline import PerceptionBlock
@@ -79,8 +79,8 @@ class LivePerceptionBlock:
         )
 
     def _preload(self) -> None:
-        """Galerie ReID de chaque fiche préparée au démarrage (~10 s par fiche la première fois) :
-        la cible demandée à la voix est ensuite prise en quelques millisecondes."""
+        """ReID gallery of each card prepared at startup (~10 s per card the first time):
+        the target asked by voice is then taken in a few milliseconds."""
         from visionaid.perception.target import load_sheets, target_raw
         from visionaid.utils.logging import get_logger
 
@@ -89,9 +89,9 @@ class LivePerceptionBlock:
             t0 = time.time()
             try:
                 self.block.set_target(_cfg(target_raw(self.raw, sh.phrases[0])), 0)
-                log.info("Cible « %s » prête (%.1f s)", sh.label, time.time() - t0)
-            except Exception as e:  # noqa: BLE001 - fiche sans photo exploitable…
-                log.warning("Cible « %s » non préparée : %s", sh.label, e)
+                log.info("Target \"%s\" ready (%.1f s)", sh.label, time.time() - t0)
+            except Exception as e:  # noqa: BLE001 - card without a usable photo…
+                log.warning("Target \"%s\" not prepared: %s", sh.label, e)
         self.block.clear_target(0)
 
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None:
@@ -112,7 +112,7 @@ class LivePerceptionBlock:
 
 
 class LiveGeometryBlock:
-    """Profondeur + pose (VIO si IMU) ; intrinsèques de l'appareil ; profondeur stub si demandé."""
+    """Depth + pose (VIO if IMU); device intrinsics; stub depth if requested."""
 
     def __init__(self, raw: dict) -> None:
         from visionaid.perception.depth import DepthEstimator, StubDepthBackend
@@ -168,7 +168,7 @@ class LiveGeometryBlock:
 
 
 def make_live_world(raw: dict):
-    """Modèle du monde avec les intrinsèques de l'appareil (calibration de la phase 17)."""
+    """World model with the device intrinsics (phase 17 calibration)."""
     from visionaid.apps.realtime_blocks import WorldBlock
 
     blk = WorldBlock(raw)
@@ -178,10 +178,10 @@ def make_live_world(raw: dict):
 
 # ---------------------------------------------------------------------------- planification
 class LivePlannerBlock:
-    """Planificateur à cadence fixe avec chien de garde.
+    """Fixed-rate planner with a watchdog.
 
-    Replanifie sur une costmap nouvelle ; si aucune pose fraîche n'est arrivée depuis `stale_s`
-    (téléphone déconnecté, pose perdue), publie un chemin **invalide** (une fois par seconde).
+    Replans on a new costmap; if no fresh pose has arrived for `stale_s`
+    (phone disconnected, pose lost), publishes an **invalid** path (once per second).
     """
 
     def __init__(self, raw: dict, stale_s: float = 1.5) -> None:
@@ -204,7 +204,7 @@ class LivePlannerBlock:
         cmd = inputs.get("command")
         if cmd is not None and cmd.id != self.cmd_id:
             self.cmd_id = int(cmd.id)
-            self.planner = Planner(self.cfg)  # nouvel objet : plus d'engagement sur l'ancien chemin
+            self.planner = Planner(self.cfg)  # new object: no more commitment to the old path
             self._last_cm_key = None
         now = time.time()
         pose = inputs.get("pose_world")
@@ -227,7 +227,7 @@ class LivePlannerBlock:
             return None
         cm, obj = inputs.get("costmap"), inputs.get("object")
         if obj is not None and getattr(obj, "target_id", 0) != self.cmd_id:
-            obj = None  # objet d'une demande précédente
+            obj = None  # object of a previous request
         if cm is None or obj is None or pose is None:
             return None
         ck = (cm.frame_idx, cm.t)
@@ -245,15 +245,15 @@ class LivePlannerBlock:
 
 # ---------------------------------------------------------------------------- guidage sonore
 class LiveGuidanceBlock:
-    """Consigne de guidage + consigne sonore, à cadence fixe (`realtime.cue_hz`).
+    """Guidance instruction + sound instruction, at a fixed rate (`realtime.cue_hz`).
 
-    Sans pose nouvelle depuis `stale_s` (téléphone déconnecté, géométrie bloquée), la pose est
-    considérée perdue : l'utilisateur entend « arrête-toi » au lieu d'un guide figé.
+    Without a new pose for `stale_s` (phone disconnected, geometry blocked), the pose is
+    considered lost: the user hears "stop" instead of a frozen guide.
 
-    Demandes (sujet `command`) : nouvelle recherche → nouveau guidage (annonces comprises) ;
-    « stop » → silence ; phrase incomprise → réponse vocale, la recherche en cours continue.
-    En mode `stt`, rien ne joue avant la première demande (état IDLE).
-    Phrases : portées par la consigne sonore (téléphone) et/ou dites par le Mac (`_tts`).
+    Requests (`command` topic): new search → new guidance (announcements included);
+    "stop" → silence; misunderstood phrase → spoken reply, the current search continues.
+    In `stt` mode, nothing plays before the first request (IDLE state).
+    Sentences: carried by the sound instruction (phone) and/or spoken by the Mac (`_tts`).
     """
 
     def __init__(self, raw: dict, stale_s: float = 1.5) -> None:
@@ -265,7 +265,7 @@ class LiveGuidanceBlock:
         self.raw = raw
         self.cfg = cfg
         hold = float(getattr(getattr(cfg, "tts", None), "hold_s", 1.0) or 1.0)
-        self.speech = SpeechQueue(hold)  # une seule file : numéros uniques pour le téléphone
+        self.speech = SpeechQueue(hold)  # a single queue: unique numbers for the phone
         self.active = not stt_mode(raw)
         self.engine = GuidanceEngine(cfg, announce_start=self.active, speech=self.speech)
         self.director = SoundDirector(cfg.audio)
@@ -337,7 +337,7 @@ class LiveGuidanceBlock:
             self.engine.landmarks = lms
         pose = inputs.get("pose_world")
         if pose is None and not self.speech.queue and self.speech.cur is None:
-            return None  # pas encore de pose : silence
+            return None  # no pose yet: silence
         now = time.time()
         if pose is None or not self.active:
             t = pose.t if pose is not None else now
@@ -385,10 +385,10 @@ class LiveGuidanceBlock:
 
 # ---------------------------------------------------------------------------- puits
 class PathSink:
-    """Mesure : latence capture → chemin publié, cadence de chemins valides, état de la cible.
+    """Measurement: capture → published path latency, valid path rate, target state.
 
-    Temps de capture côté PC : `t_phone + offset` (horloge synchronisée, sujet `clock`) en direct ;
-    `_t0_wall + t` en rejeu de session (temps ramené au début, comme le temps vidéo).
+    Capture time on the computer side: `t_phone + offset` (synchronised clock, `clock` topic) live;
+    `_t0_wall + t` in session replay (time brought back to the start, like video time).
     """
 
     def __init__(self, raw: dict) -> None:
@@ -477,7 +477,7 @@ class PathSink:
 
 # ---------------------------------------------------------------------------- visualisation
 class _RerunFanout:
-    """Le module `rerun`, mais `log` / `set_time` / `send_blueprint` envoyés à plusieurs flux."""
+    """The `rerun` module, but with `log` / `set_time` / `send_blueprint` sent to several streams."""
 
     def __init__(self, rr, streams: list) -> None:
         self._rr = rr
@@ -508,11 +508,11 @@ class _RerunFanout:
 
 
 class RerunLiveBlock:
-    """Visualisation Rerun : `live` (visualiseur lancé), `file` (.rrd) ou les deux (`both`).
+    """Rerun visualisation: `live` (viewer started), `file` (.rrd) or both (`both`).
 
-    Disposition fixe : monde 3D en grand (sol quadrillé, carte des obstacles posée au sol, nuage
-    de points coloré par la hauteur, trajectoire, position et cap de l'utilisateur, chemin,
-    cible), et à droite l'image annotée, la carte 2D et l'état.
+    Fixed layout: large 3D world (grid floor, obstacle map laid on the floor, point cloud
+    coloured by height, trajectory, user position and heading, path,
+    target), and on the right the annotated image, the 2D map and the state.
     """
 
     def __init__(self, raw: dict) -> None:
@@ -521,8 +521,8 @@ class RerunLiveBlock:
         mode = str(raw.get("_rerun", "file"))
         out = resolve_path(raw["paths"]["outputs"]) / "live_session.rrd"
         out.parent.mkdir(parents=True, exist_ok=True)
-        # un flux par destination : fenêtre (spawn) et/ou fichier. Rerun 0.23 n'a pas
-        # `set_sinks` : l'ancien mode « both » n'écrivait aucun fichier, sans le signaler
+        # one stream per destination: window (spawn) and/or file. Rerun 0.23 has no
+        # `set_sinks`: the old "both" mode wrote no file, without saying so
         streams = []
         if mode in ("live", "both"):
             live = rr.RecordingStream("visionaid_live")
@@ -552,9 +552,9 @@ class RerunLiveBlock:
                 rrb.Horizontal(
                     rrb.Spatial3DView(origin="world", name="Monde 3D"),
                     rrb.Vertical(
-                        rrb.Spatial2DView(origin="camera/image", name="Caméra"),
-                        rrb.Spatial2DView(origin="costmap", name="Carte des obstacles"),
-                        rrb.TextLogView(origin="status", name="État"),
+                        rrb.Spatial2DView(origin="camera/image", name="Camera"),
+                        rrb.Spatial2DView(origin="costmap", name="Obstacle map"),
+                        rrb.TextLogView(origin="status", name="State"),
                         row_shares=[3, 3, 1],
                     ),
                     column_shares=[3, 2],
@@ -562,11 +562,11 @@ class RerunLiveBlock:
                 collapse_panels=True,
             )
             self.rr.send_blueprint(bp)
-        except Exception:  # version de Rerun sans blueprint : disposition automatique
+        except Exception:  # Rerun version without blueprint: automatic layout
             pass
 
     def _floor_grid(self, half: float = 8.0, step: float = 1.0) -> None:
-        """Quadrillage du sol (1 m) et axes, statiques."""
+        """Floor grid (1 m) and axes, static."""
         rr = self.rr
         ticks = np.arange(-half, half + 1e-9, step)
         lines = [[[x, -half, 0.0], [x, half, 0.0]] for x in ticks]
@@ -582,13 +582,13 @@ class RerunLiveBlock:
                 origins=[[0, 0, 0]] * 2,
                 vectors=[[0.5, 0, 0], [0, 0.5, 0]],
                 colors=[[200, 60, 60], [60, 200, 60]],
-                labels=["x (cap initial)", "y"],
+                labels=["x (initial heading)", "y"],
             ),
             static=True,
         )
 
     def _costmap_3d(self, cm) -> None:
-        """Carte posée au sol : obstacles en rouge sombre, zones libres en gris clair."""
+        """Map laid on the floor: obstacles in dark red, free areas in light grey."""
         from visionaid.mapping.costmap import FREE, OCC
 
         rr = self.rr
@@ -620,7 +620,7 @@ class RerunLiveBlock:
                 )
 
     def _cloud(self, depth, T: np.ndarray, K: np.ndarray) -> None:
-        """Nuage de points de la dernière profondeur, coloré par la hauteur (bleu bas → orange haut)."""
+        """Point cloud of the latest depth, coloured by height (blue low → orange high)."""
         from visionaid.mapping.geometry import backproject, transform
 
         pc, _ = backproject(depth.depth, K, 8, None, 0.2, 5.0)
@@ -680,7 +680,7 @@ class RerunLiveBlock:
                     "world/trajectoire",
                     rr.LineStrips3D([tr_floor], colors=[[60, 120, 255]], radii=0.015),
                 )
-            # utilisateur : point au sol + flèche de cap (axe optique projeté)
+            # user: point on the floor + heading arrow (projected optical axis)
             fwd = T[:3, 2].copy()
             fwd[2] = 0.0
             nf = np.linalg.norm(fwd)
@@ -735,8 +735,8 @@ class RerunLiveBlock:
             rr.log(
                 "status/son",
                 rr.TextLog(
-                    f"son : {snd.mode} ({snd.state}), direction {np.degrees(snd.azimuth):+.0f}°, "
-                    f"pan {snd.pan:+.2f}, une note toutes les {snd.interval_s:.2f} s, "
+                    f"sound: {snd.mode} ({snd.state}), direction {np.degrees(snd.azimuth):+.0f}°, "
+                    f"pan {snd.pan:+.2f}, one note every {snd.interval_s:.2f} s, "
                     f"obstacles {snd.obstacle_db:.0f} dB"
                 ),
             )
@@ -773,7 +773,7 @@ class RerunLiveBlock:
                     labels=[f"{self.target_label} ({obj.state})"],
                 ),
             )
-            rr.log(  # tige verticale du sol à la cible : lisible même vue de dessus
+            rr.log(  # vertical stick from the floor to the target: readable even from above
                 "world/cible_tige",
                 rr.LineStrips3D([[[pos[0], pos[1], 0.0], pos]], colors=[[255, 140, 0]], radii=0.01),
             )

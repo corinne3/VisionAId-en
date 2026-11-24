@@ -1,4 +1,4 @@
-"""Pipeline mono-processus déterministe (mode offline), mêmes blocs que le graphe temps réel."""
+"""Deterministic single-process pipeline (offline mode), same blocks as the real-time graph."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from visionaid.utils.timing import LatencyStats, Timer
 
 @dataclass
 class FrameRecord:
-    """Résumé d'une frame traitée (pour le rapport et l'évaluation)."""
+    """Summary of a processed frame (for the report and the evaluation)."""
 
     frame_idx: int
     t: float
@@ -30,18 +30,18 @@ class FrameRecord:
     cam_xyz: np.ndarray | None
     obj_xyz: np.ndarray | None
     path_valid: bool
-    head_yaw: float = float("nan")  # cap horizontal de la tête (monde, rad)
+    head_yaw: float = float("nan")  # horizontal heading of the head (world, rad)
 
 
 @dataclass
 class OfflinePipeline:
-    """Enchaîne perception → profondeur → pose → carte → planification (5 Hz) → guidage."""
+    """Chains perception → depth → pose → map → planning (5 Hz) → guidance."""
 
     cfg: object
-    perception: object  # callable(Frame) -> Detections, ou None si détections fournies
+    perception: object  # callable(Frame) -> Detections, or None if detections are provided
     depth: object  # DepthEstimator
     stats: LatencyStats = field(default_factory=LatencyStats)
-    imu_source: object = None  # SessionImu (session téléphone) ou None
+    imu_source: object = None  # SessionImu (phone session) or None
 
     def __post_init__(self) -> None:
         self.vo = make_pose_source(
@@ -67,14 +67,14 @@ class OfflinePipeline:
             depth = self.depth(frame)
         with Timer(st, "pose"):
             if self.imu_source is not None and hasattr(self.vo, "add_imu"):
-                # IMU jusqu'à un peu après l'image (le décalage δ peut être positif)
+                # IMU up to a little after the image (the offset δ may be positive)
                 t_end = frame.t + 0.3
                 self.vo.add_imu(self.imu_source.window(self._imu_fed, t_end))
                 self._imu_fed = t_end
             if hasattr(self.vo, "correct_depth"):
                 depth = self.vo.correct_depth(frame, depth)
             pose = self.vo.update(frame, depth)
-        # meubles détectés avec la cible (même passe YOLOE ; rangés sur les détections)
+        # furniture detected with the target (same YOLOE pass; stored on the detections)
         furniture = getattr(dets, "_furniture", None) if dets is not None else None
         with Timer(st, "mapping"):
             cm, obj = self.world.update(frame, depth, pose, dets, furniture)
@@ -136,8 +136,8 @@ class OfflinePipeline:
 
 
 def guidance_coherence(records: list[FrameRecord], fps: float, horizon_s: float = 1.0) -> dict:
-    """Angle entre l'azimut de guidage et la direction réelle de déplacement dans la seconde
-    suivante, sur les segments où la caméra se rapproche de la gourde (informatif)."""
+    """Angle between the guidance azimuth and the real direction of movement in the next
+    second, over the segments where the camera gets closer to the bottle (informative)."""
     k = int(round(horizon_s * fps))
     angles = []
     for i in range(len(records) - k):
@@ -154,11 +154,11 @@ def guidance_coherence(records: list[FrameRecord], fps: float, horizon_s: float 
             continue
         d0 = np.linalg.norm(a.obj_xyz[:2] - a.cam_xyz[:2])
         d1 = np.linalg.norm(a.obj_xyz[:2] - b.cam_xyz[:2])
-        if d1 >= d0:  # ne se rapproche pas
+        if d1 >= d0:  # not getting closer
             continue
         if not math.isfinite(a.head_yaw):
             continue
-        guide = a.head_yaw + a.azimuth  # direction de guidage dans le monde
+        guide = a.head_yaw + a.azimuth  # guidance direction in the world
         az_move = math.atan2(move[1], move[0])
         diff = math.atan2(math.sin(az_move - guide), math.cos(az_move - guide))
         angles.append(abs(math.degrees(diff)))

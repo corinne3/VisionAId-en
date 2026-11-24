@@ -1,4 +1,4 @@
-"""Sources d'images : fichier vidéo, replay temps réel, liste en mémoire, stub WebRTC."""
+"""Image sources: video file, real-time replay, in-memory list, WebRTC stub."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from visionaid.io.intrinsics import Intrinsics, from_hfov, make_intrinsics
 
 @runtime_checkable
 class FrameSource(Protocol):
-    """Contrat d'une source d'images horodatées."""
+    """Contract of a source of timestamped images."""
 
     @property
     def intrinsics(self) -> Intrinsics: ...
@@ -27,7 +27,7 @@ class FrameSource(Protocol):
 
 
 def rotate_image(img: np.ndarray, rotation_deg: int) -> np.ndarray:
-    """Rotation d'affichage (sens horaire) multiple de 90°."""
+    """Display rotation (clockwise), multiple of 90°."""
     r = int(rotation_deg) % 360
     if r == 90:
         return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
@@ -39,7 +39,7 @@ def rotate_image(img: np.ndarray, rotation_deg: int) -> np.ndarray:
 
 
 class VideoFileSource:
-    """Lit un fichier vidéo : rotation selon métadonnées, redimensionnement, timestamps vidéo."""
+    """Reads a video file: rotation according to metadata, resizing, video timestamps."""
 
     def __init__(
         self,
@@ -54,7 +54,7 @@ class VideoFileSource:
         self.path = Path(path)
         self.cap = cv2.VideoCapture(str(self.path))
         if not self.cap.isOpened():
-            raise OSError(f"Impossible d'ouvrir {self.path}")
+            raise OSError(f"Cannot open {self.path}")
         self.cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)
         meta_rot = int(self.cap.get(cv2.CAP_PROP_ORIENTATION_META))
         self.rotation = (
@@ -134,7 +134,7 @@ class VideoFileSource:
 
 
 class ListSource:
-    """Source en mémoire (tests, lecture inversée)."""
+    """In-memory source (tests, reversed reading)."""
 
     def __init__(self, frames: list[Frame], intrinsics: Intrinsics, fps: float = 30.0) -> None:
         self.frames = list(frames)
@@ -159,7 +159,7 @@ class ListSource:
 
 
 class ReplaySource:
-    """Débite une source au rythme réel ; si le consommateur est en retard, saute des frames."""
+    """Delivers a source at real-time pace; if the consumer is late, frames are skipped."""
 
     def __init__(
         self, source: FrameSource, speed: float = 1.0, clock=time.perf_counter, sleep=time.sleep
@@ -200,7 +200,7 @@ class ReplaySource:
             self._sleep(wait)
             self.delivered += 1
             return frame
-        # En retard : on saute toutes les frames déjà échues sauf la plus récente.
+        # Late: skip all frames already due except the most recent one.
         while True:
             nxt = self.src.read()
             if nxt is None:
@@ -216,13 +216,13 @@ class ReplaySource:
 
 
 class WebRTCSource:
-    """Stub : flux du téléphone via WebRTC (à venir).
+    """Stub: phone stream via WebRTC (to come).
 
-    Contrat attendu : `read()` renvoie une `Frame` dont `t` est l'horodatage capteur du téléphone
-    (horloge commune avec la pose ARKit), `K` les intrinsèques ARKit de la frame ; la pose associée
-    est publiée par `ArkitPoseSource` avec le même `t`/`frame_idx`. Les frames trop anciennes sont
-    abandonnées (dernière valeur seulement).
+    Expected contract: `read()` returns a `Frame` whose `t` is the phone sensor timestamp
+    (clock shared with the ARKit pose), `K` the ARKit intrinsics of the frame; the associated pose
+    is published by `ArkitPoseSource` with the same `t`/`frame_idx`. Frames that are too old are
+    dropped (latest value only).
     """
 
     def __init__(self, *args, **kwargs) -> None:
-        raise NotImplementedError("WebRTCSource n'est pas encore implémentée")
+        raise NotImplementedError("WebRTCSource is not implemented yet")

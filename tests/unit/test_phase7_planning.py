@@ -137,7 +137,7 @@ def make_cm(cfg, state):
 def test_path_avoids_inflated_cells():
     cfg = load_config()
     st = np.full((80, 80), FREE, np.int8)
-    st[20:60, 38:42] = OCC  # mur
+    st[20:60, 38:42] = OCC  # wall
     cm, g = make_cm(cfg, st)
     pl = Planner(cfg)
     obj = ObjectEstimate(0, 0, np.array([3.5, 2.0, 0.8]), np.eye(3), "seen", 1.0)
@@ -153,17 +153,17 @@ def test_goal_is_free_cell_near_object_on_furniture():
     st = np.full((80, 80), FREE, np.int8)
     st[30:50, 50:70] = OCC  # table
     cm, g = make_cm(cfg, st)
-    obj = ObjectEstimate(0, 0, np.array([3.0, 2.0, 0.8]), np.eye(3), "seen", 1.0)  # sur la table
+    obj = ObjectEstimate(0, 0, np.array([3.0, 2.0, 0.8]), np.eye(3), "seen", 1.0)  # on the table
     path = Planner(cfg).plan(cm, np.array([0.5, 2.0]), obj)
     assert path.valid
     gi, gj = int(path.goal[1] / g.res), int(path.goal[0] / g.res)
     assert st[gi, gj] != OCC
-    # phase 27 : but « à portée de main » (≤ 0,70 m de l'objet), marge réduite à 0,20 m près de
-    # l'objet (au lieu de 0,35 m) : au bord de la table, du côté de l'utilisateur
-    # objet à 0,50 m à l'intérieur de la table : aucune cellule accessible n'est à portée de main
-    # (0,55 m), repli sur la cellule franchissable la plus proche, au bord de la marge (~0,73 m)
+    # phase 27: goal "within arm's reach" (≤ 0.70 m from the object), margin reduced to 0.20 m near
+    # the object (instead of 0.35 m): at the edge of the table, on the user's side
+    # object 0.50 m inside the table: no accessible cell is within arm's reach
+    # (0.55 m), fallback to the closest traversable cell, at the edge of the margin (~0.73 m)
     assert np.linalg.norm(path.goal - obj.position[:2]) <= 0.80
-    assert 2.5 - path.goal[0] >= cfg.planning.approach_clearance_m - 0.05  # ≥ 20 cm de la table
+    assert 2.5 - path.goal[0] >= cfg.planning.approach_clearance_m - 0.05  # ≥ 20 cm from the table
     assert 2.0 < path.goal[0] < 2.5 + 1e-6
 
 
@@ -173,9 +173,9 @@ def test_lookahead():
     assert np.allclose(la, [1.0, 0.0])
     la = lookahead_point(pts, 2.5)
     assert np.allclose(la, [2.0, 0.5])
-    assert np.allclose(lookahead_point(pts, 10.0), [2.0, 2.0])  # chemin plus court → cible
+    assert np.allclose(lookahead_point(pts, 10.0), [2.0, 2.0])  # shorter path → target
     assert polyline_length(pts) == pytest.approx(4.0)
-    # sur le chemin : distance au segment nulle
+    # on the path: zero distance to the segment
     la = lookahead_point(pts, 3.3)
     assert abs(la[0] - 2.0) < 1e-9 and 0 <= la[1] <= 2
 

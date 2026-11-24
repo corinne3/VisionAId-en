@@ -1,4 +1,4 @@
-"""Utilisateur virtuel et boucle de simulation fermée (mapping, planning, guidance réels)."""
+"""Virtual user and closed simulation loop (real mapping, planning, guidance)."""
 
 from __future__ import annotations
 
@@ -16,16 +16,16 @@ from visionaid.planning.astar import astar
 from visionaid.planning.planner import Planner
 from visionaid.sim.world import SimSensor, SimWorld
 
-COLLISION_RADIUS = 0.20  # demi-largeur d'épaules : contact si le centre est à < 20 cm d'un obstacle
+COLLISION_RADIUS = 0.20  # half shoulder width: contact if the centre is < 20 cm from an obstacle
 HEAD_HEIGHT = 1.4
 
 
 def head_pose(x: float, y: float, heading: float) -> np.ndarray:
-    """T_world_cam d'une tête à 1,4 m regardant horizontalement selon `heading` (OpenCV)."""
+    """T_world_cam of a head at 1.4 m looking horizontally along `heading` (OpenCV)."""
     c, s = math.cos(heading), math.sin(heading)
     R = np.array(
         [[s, 0.0, c], [-c, 0.0, s], [0.0, -1.0, 0.0]]
-    )  # colonnes : x droite, y bas, z avant
+    )  # columns: x right, y down, z forward
     T = np.eye(4)
     T[:3, :3] = R
     T[:3, 3] = [x, y, HEAD_HEIGHT]
@@ -33,7 +33,7 @@ def head_pose(x: float, y: float, heading: float) -> np.ndarray:
 
 
 def optimal_length(world: SimWorld, body: float = 0.35, success_m: float = 0.5) -> float:
-    """Longueur (m) du plus court chemin vérité terrain jusqu'à la zone d'arrivée (< success_m)."""
+    """Length (m) of the shortest ground-truth path to the arrival area (< success_m)."""
     cc = np.where(world.dist >= body, 0.0, np.inf)
     s = world.cell(world.start[:2])
     if not world.inside(s) or not np.isfinite(cc[s]):
@@ -57,7 +57,7 @@ def optimal_length(world: SimWorld, body: float = 0.35, success_m: float = 0.5) 
 
 @dataclass
 class Agent:
-    """Utilisateur virtuel : délai de réaction, bruit angulaire, vitesse de marche."""
+    """Virtual user: reaction delay, angular noise, walking speed."""
 
     x: float
     y: float
@@ -82,7 +82,7 @@ class Agent:
     def step(
         self, t: float, dt: float, cue: GuidanceCue | None, world: SimWorld
     ) -> tuple[float, bool]:
-        """Avance d'un pas ; retourne (distance parcourue, collision)."""
+        """Moves one step forward; returns (distance travelled, collision)."""
         self.history.append((t, self.heading))
         if t - self._noise_t >= 1.0:
             self._noise_val = self.rng.normal(0.0, self.noise)
@@ -96,12 +96,12 @@ class Agent:
                 turn = float(np.clip(err, -self.turn_rate * dt, self.turn_rate * dt))
                 self.heading += turn
                 err -= turn
-                if abs(err) < math.radians(30):  # on tourne d'abord, on avance ensuite
+                if abs(err) < math.radians(30):  # turn first, then move forward
                     v = self.speed * math.cos(err) * (0.6 if st == "APPROACHING" else 1.0)
             elif st == "SEARCHING":
                 self.heading += self.sweep_rate * dt
             elif st == "OBSTACLE_ALERT":
-                # s'écarte du son d'alerte ; le sens est choisi à l'entrée en alerte puis conservé
+                # moves away from the alert sound; the direction is chosen when entering the alert then kept
                 if self._alert_dir == 0.0:
                     a = cue.azimuth
                     self._alert_dir = (
@@ -118,7 +118,7 @@ class Agent:
         nx = self.x + v * dt * math.cos(self.heading)
         ny = self.y + v * dt * math.sin(self.heading)
         if world.clearance(np.array([nx, ny])) < COLLISION_RADIUS:
-            return 0.0, True  # contact : l'utilisateur est bloqué
+            return 0.0, True  # contact: the user is blocked
         d = math.hypot(nx - self.x, ny - self.y)
         self.x, self.y = nx, ny
         return d, False
@@ -138,7 +138,7 @@ class EpisodeResult:
     states: dict
     events_applied: int = 0
     frames: list | None = None
-    cues: list | None = None  # consignes émises (si record), pour le rendu sonore
+    cues: list | None = None  # emitted instructions (if record), for the sound rendering
 
     @property
     def ratio(self) -> float:
@@ -152,7 +152,7 @@ class EpisodeResult:
 def _place_box_ahead(
     world: SimWorld, agent: Agent, path_pts: np.ndarray | None, size: float, rng
 ) -> bool:
-    """Obstacle surgissant à ~1,2 m devant, sur le chemin planifié si possible."""
+    """Sudden obstacle ~1.2 m ahead, on the planned path if possible."""
     cands = []
     if path_pts is not None and len(path_pts) > 1:
         from visionaid.planning.lookahead import lookahead_point
@@ -164,7 +164,7 @@ def _place_box_ahead(
             np.array([agent.x + d * math.cos(agent.heading), agent.y + d * math.sin(agent.heading)])
         )
     for c in cands:
-        # face avant à ≥ 1 m : distance de réaction (0,3 s + temps de maintien à 0,6 m/s)
+        # front face at ≥ 1 m: reaction distance (0.3 s + hold time at 0.6 m/s)
         if np.linalg.norm(c - [agent.x, agent.y]) < 1.3 or np.linalg.norm(c - world.obj[:2]) < 1.0:
             continue
         saved = world.occ.copy()
@@ -186,7 +186,7 @@ def _place_box_ahead(
 def run_episode(
     cfg, world: SimWorld, seed: int, record: bool = False, max_time: float | None = None
 ) -> EpisodeResult:
-    """Simule un épisode complet avec les modules réels de cartographie, planification et guidance."""
+    """Simulates a full episode with the real mapping, planning and guidance modules."""
     sc = cfg.sim
     rng = np.random.default_rng(seed)
     dt = float(sc.dt)
@@ -230,7 +230,7 @@ def run_episode(
     t = 0.0
     k = 0
     while t < max_time:
-        # événements (obstacle surgissant)
+        # events (sudden obstacle)
         for ev in list(events):
             if t >= ev[0] and ev[1] == "box_ahead":
                 n_events += _place_box_ahead(
@@ -241,12 +241,12 @@ def run_episode(
                     rng,
                 )
                 events.remove(ev)
-        # perception simulée
+        # simulated perception
         T = head_pose(agent.x, agent.y, agent.heading)
         pts = sensor.scan(world, agent.x, agent.y, agent.heading)
         grid.update(pts, np.array([agent.x, agent.y, HEAD_HEIGHT]), dt)
         carve = float(getattr(cfg.costmap, "carve_radius_m", 0.0) or 0.0)
-        if carve > 0:  # même règle que le pipeline réel : là où l'utilisateur marche, c'est libre
+        if carve > 0:  # same rule as the real pipeline: where the user walks, it is free
             grid.carve(np.array([agent.x, agent.y]), carve)
         if world.visible(
             np.array([agent.x, agent.y]),

@@ -1,4 +1,4 @@
-"""Phase 29 : demande à la voix (STT) et annonces vocales (TTS)."""
+"""Phase 29: voice request (STT) and voice announcements (TTS)."""
 
 import math
 
@@ -29,7 +29,7 @@ pytestmark = pytest.mark.unit
 
 
 def T_facing(yaw_deg: float = 0.0, xy=(0.0, 0.0), h: float = 1.4) -> np.ndarray:
-    """Caméra (x droite, y bas, z avant) regardant à l'horizontale dans la direction `yaw`."""
+    """Camera (x right, y down, z forward) looking horizontally in the direction `yaw`."""
     y = math.radians(yaw_deg)
     fwd = np.array([math.cos(y), math.sin(y), 0.0])
     left = np.array([-math.sin(y), math.cos(y), 0.0])
@@ -42,7 +42,7 @@ def T_facing(yaw_deg: float = 0.0, xy=(0.0, 0.0), h: float = 1.4) -> np.ndarray:
 
 
 def scene():
-    """Gourde sur une table au fond, un canapé entre l'utilisateur et la table."""
+    """Bottle on a table at the far end, a sofa between the user and the table."""
     lms = Landmarks(
         t=0.0,
         labels=["table", "sofa"],
@@ -94,7 +94,7 @@ def test_found_and_approach_phrases():
     assert "contourne le canapé par la gauche" in s
     a = n.approach_phrase(T_facing(0, (3.0, 0.0)), obj.position, path, lms)
     assert a.startswith("Tu arrives vers la table, la gourde sera")
-    # clés par terre, sans meuble : hauteur annoncée, pluriel
+    # keys on the floor, without furniture: height announced, plural
     k = Narrator(cfg, "les clés", plural=True)
     pos = np.array([0.0, 2.0, 0.05])
     s = k.found_phrase(T_facing(0), pos, None, None, None)
@@ -110,20 +110,20 @@ def test_narrator_sequence():
     n.update(0.0, "SEARCHING", T_facing(0), unknown, None, None, lms, math.inf, math.inf)
     text, sid, duck = q.current(0.0)
     assert text.startswith("Je cherche la gourde") and sid == 1 and duck
-    # objet vu, pas encore de chemin : on attend (au plus wait_path_s)
+    # object seen, no path yet: we wait (at most wait_path_s)
     n.update(1.0, "NAVIGATING", T_facing(0), obj, None, None, lms, 4.1, math.inf)
     assert not n.found_said
     n.update(1.2, "NAVIGATING", T_facing(0), obj, path, None, lms, 4.1, math.inf)
     assert n.found_said
     assert q.current(1.2)[1] == 2 and "sur la table" in q.current(1.2)[0]
-    assert q.current(2.5)[0] == ""  # tenue d'une seconde puis plus rien
-    # en route : pas d'annonce ; près de la table : annonce d'approche, sans suspendre le chemin
+    assert q.current(2.5)[0] == ""  # held for one second then nothing
+    # on the way: no announcement; near the table: approach announcement, without suspending the path
     n.update(3.0, "NAVIGATING", T_facing(0, (1.0, 0.5)), obj, path, None, lms, 3.2, math.inf)
     assert not n.approach_said
     n.update(5.0, "NAVIGATING", T_facing(-20, (2.9, -0.4)), obj, path, None, lms, 1.2, 0.6)
     text, sid, duck = q.current(5.0)
     assert n.approach_said and text.startswith("Tu arrives vers la table") and not duck
-    # objet confirmé ailleurs : correction
+    # object confirmed elsewhere: correction
     moved = ObjectEstimate(6.0, 0, np.array([1.0, 3.0, 0.8]), np.eye(3), "seen")
     q2 = SpeechQueue()
     n2 = Narrator(cfg, "la gourde", speech=q2, announce_start=False)
@@ -164,8 +164,8 @@ def test_renderer_ducks_path_during_found_phrase(tmp_path):
     ((start, end, text),) = r.speeches
     assert start == 0.0 and 0.8 < end < 4 and text.startswith("La gourde")
     fs = r.fs
-    assert np.abs(st[int(end * fs) + int(0.4 * fs) :]).max() > 0.01  # le chemin reprend
-    # pendant la phrase : seulement la voix (centrée, gauche = droite)
+    assert np.abs(st[int(end * fs) + int(0.4 * fs) :]).max() > 0.01  # the path resumes
+    # during the sentence: only the voice (centred, left = right)
     seg = st[int(0.2 * fs) : int((end - 0.1) * fs)]
     assert np.allclose(seg[:, 0], seg[:, 1], atol=1e-3)
 
@@ -177,7 +177,7 @@ def test_landmark_map_merges_views():
     m = LandmarkMap(cfg.landmarks)
     rng = np.random.default_rng(0)
     for k in range(4):
-        # table de 0,8 × 1,2 m, plateau à 0,75 m, vue partiellement à chaque fois
+        # 0.8 × 1.2 m table, top at 0.75 m, partially seen each time
         x = rng.uniform(2.0, 2.8 if k % 2 else 2.5, 400)
         y = rng.uniform(-0.6, 0.6, 400)
         z = np.where(rng.random(400) < 0.7, 0.75, rng.uniform(0.1, 0.75, 400))
@@ -189,7 +189,7 @@ def test_landmark_map_merges_views():
         5.0,
     )  # noqa: E501
     msg = m.to_msg(5.0)
-    assert msg.labels == ["table"]  # la chaise n'a été vue qu'une fois
+    assert msg.labels == ["table"]  # the chair was seen only once
     b = msg.boxes[0]
     assert b[0] < 2.1 and b[2] > 2.5 and abs(msg.top_z[0] - 0.75) < 0.05
 
@@ -207,7 +207,7 @@ def test_perception_splits_furniture_and_switches_target():
     items = [
         (np.array([10, 10, 40, 60]), 0.9, "bottle"),
         (np.array([50, 50, 200, 150]), 0.8, "table"),
-        (np.array([0, 100, 30, 150]), 0.2, "chair"),  # trop peu sûr : ignoré
+        (np.array([0, 100, 30, 150]), 0.2, "chair"),  # not confident enough: ignored
     ]
     det = StubDetector(fn=lambda img, k: items)
     blk = PerceptionBlock(
@@ -247,7 +247,7 @@ def test_command_desk_numbers_requests():
     desk.on_message({"type": "command", "text": "stop"})
     a, b, c = desk.pop(), desk.pop(), desk.pop()
     assert (a.action, a.id, a.target, a.spoken) == ("search", 1, "gourde", "la gourde")
-    assert (b.action, b.id, b.seq) == ("unknown", 1, 2)  # incomprise : la recherche continue
+    assert (b.action, b.id, b.seq) == ("unknown", 1, 2)  # misunderstood: the search continues
     assert (c.action, c.id) == ("stop", 2)
     assert desk.pop() is None and desk.current is c
     assert [h["action"] for h in heard] == ["search", "unknown", "stop"]
@@ -272,7 +272,7 @@ def test_live_guidance_block_idle_then_search():
     bad = VoiceCommand(0.0, 1, "unknown", "téléphone", seq=2)
     blk.process({"pose_world": Pose(1.5, 2, T_facing(0)), "command": bad})
     out = blk.process({"pose_world": Pose(1.6, 3, T_facing(0)), "command": bad})
-    assert out["sound"].mode == "search"  # la recherche continue
+    assert out["sound"].mode == "search"  # the search continues
     assert (
         out["sound"].speech.startswith("Je n'ai pas compris") and out["sound"].speech_id > first_id
     )

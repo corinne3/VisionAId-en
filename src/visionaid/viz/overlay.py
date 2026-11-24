@@ -1,4 +1,4 @@
-"""Rendu de la vidéo annotée : détections, cible, état, flèche de cap, mini-costmap."""
+"""Rendering of the annotated video: detections, target, state, heading arrow, mini-costmap."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def minimap(
     size: int,
     span_m: float = 6.0,
 ) -> np.ndarray:
-    """Vignette de la costmap centrée sur l'utilisateur, cap vers le haut de l'image."""
+    """Costmap inset centred on the user, heading towards the top of the image."""
     out = np.full((size, size, 3), 90, np.uint8)
     if cm is None or pose is None:
         cv2.putText(
@@ -32,7 +32,7 @@ def minimap(
     f = T[:2, 2] / max(np.linalg.norm(T[:2, 2]), 1e-6)  # cap
     left = np.array([-f[1], f[0]])
     s = size / span_m  # px / m
-    # échantillonnage de la costmap dans le repère utilisateur
+    # sampling of the costmap in the user frame
     u, v = np.meshgrid(np.arange(size), np.arange(size))
     fwd_m = (size / 2 - v) / s
     lat_m = (size / 2 - u) / s
@@ -98,13 +98,13 @@ def draw_overlay(
                 )
             else:
                 cv2.rectangle(out, (x0, y0), (x1, y1), (150, 150, 150), 1)
-    # bandeau d'état
+    # state banner
     if cue is not None:
         col = STATE_COLORS.get(cue.state, (255, 255, 255))
         cv2.rectangle(out, (0, 0), (w, 44), (0, 0, 0), -1)
         dist = f"{cue.distance:.2f} m" if math.isfinite(cue.distance) else "-"
         cv2.putText(out, f"{cue.state}  {dist}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, col, 2)
-        # flèche de cap (vue de dessus : haut = devant, gauche = azimut positif)
+        # heading arrow (top-down view: top = ahead, left = positive azimuth)
         cx, cy = w // 2, h - 60
         a = cue.azimuth
         tip = (int(cx - arrow_len * math.sin(a)), int(cy - arrow_len * math.cos(a)))

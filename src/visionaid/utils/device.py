@@ -1,10 +1,10 @@
-"""Sélection centralisée du device torch."""
+"""Centralised selection of the torch device."""
 
 from __future__ import annotations
 
 
 def select_device(preference: str = "auto") -> str:
-    """Retourne 'mps' si disponible (ou demandé et disponible), sinon 'cpu'."""
+    """Returns 'mps' if available (or requested and available), otherwise 'cpu'."""
     try:
         import torch
     except ImportError:  # pragma: no cover

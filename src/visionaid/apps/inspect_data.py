@@ -1,4 +1,4 @@
-"""Inspecte les données d'entrée : métadonnées vidéo, photos de référence, frames échantillonnées."""
+"""Inspects the input data: video metadata, reference photos, sampled frames."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ log = get_logger("inspect")
 
 
 def rotate_frame(img: np.ndarray, rotation_deg: int) -> np.ndarray:
-    """Applique une rotation multiple de 90° (sens horaire pour l'affichage)."""
+    """Applies a rotation that is a multiple of 90° (clockwise for display)."""
     r = int(rotation_deg) % 360
     if r == 90:
         return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
@@ -28,10 +28,10 @@ def rotate_frame(img: np.ndarray, rotation_deg: int) -> np.ndarray:
 
 
 def video_metadata(path: Path) -> dict:
-    """Résolution, fps, nombre de frames, durée et rotation d'une vidéo."""
+    """Resolution, fps, number of frames, duration and rotation of a video."""
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
-        raise OSError(f"Impossible d'ouvrir {path}")
+        raise OSError(f"Cannot open {path}")
     cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)
     fps = float(cap.get(cv2.CAP_PROP_FPS))
     n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -49,7 +49,7 @@ def video_metadata(path: Path) -> dict:
 
 
 def sample_frames(path: Path, n: int, rotation: int) -> list[np.ndarray]:
-    """Échantillonne n frames régulièrement espacées (rotation appliquée)."""
+    """Samples n evenly spaced frames (rotation applied)."""
     cap = cv2.VideoCapture(str(path))
     cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -80,18 +80,18 @@ def main(argv: list[str] | None = None) -> dict:
     if vpath.exists():
         meta = video_metadata(vpath)
         report["video"] = meta
-        log.info("Vidéo : %s", meta)
+        log.info("Video: %s", meta)
         for k, img in enumerate(sample_frames(vpath, args.n, meta["rotation_deg"])):
             cv2.imwrite(str(out_dir / f"frame_{k:02d}.jpg"), img)
     else:
-        log.warning("Vidéo absente : %s", vpath)
+        log.warning("Video missing: %s", vpath)
     for p in sorted(resolve_path(cfg.paths.ref_dir).glob(cfg.paths.ref_glob)):
         img = cv2.imread(str(p))
         info = {"path": str(p), "readable": img is not None}
         if img is not None:
             info.update(width=img.shape[1], height=img.shape[0])
         report["refs"].append(info)
-        log.info("Référence : %s", info)
+        log.info("Reference: %s", info)
     (out_dir / "inspect.json").write_text(json.dumps(report, indent=2))
     return report
 

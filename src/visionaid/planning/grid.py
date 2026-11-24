@@ -1,4 +1,4 @@
-"""Modèle de coût de déplacement sur la grille, partagé par A*, D* Lite et Dijkstra."""
+"""Movement cost model on the grid, shared by A*, D* Lite and Dijkstra."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ MOVES = [
 def traversal_cost(
     cost: np.ndarray, state: np.ndarray | None, unknown_cost: float, allow_unknown: bool
 ) -> np.ndarray:
-    """Coût par cellule (≥ 0) : proximité + pénalité inconnue ; inf = interdit."""
+    """Cost per cell (≥ 0): proximity + unknown penalty; inf = forbidden."""
     c = np.asarray(cost, np.float64).copy()
     if state is not None:
         unk = state == UNKNOWN
@@ -37,9 +37,9 @@ def traversal_cost(
 
 
 def edge_cost(cell_cost: np.ndarray, a: tuple[int, int], b: tuple[int, int]) -> float:
-    """Coût d'un pas a → b (voisins) : longueur × (1 + moyenne des coûts des deux cellules).
+    """Cost of a step a → b (neighbours): length × (1 + mean cost of the two cells).
 
-    Les déplacements diagonaux ne coupent pas les coins occupés.
+    Diagonal moves do not cut occupied corners.
     """
     ca, cb = cell_cost[a], cell_cost[b]
     if not (math.isfinite(ca) and math.isfinite(cb)):

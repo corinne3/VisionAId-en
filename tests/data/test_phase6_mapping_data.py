@@ -49,7 +49,7 @@ def test_object_position_stable(mapping):
 
 
 def test_camera_height_above_floor(mapping):
-    """(phase 5) Hauteur caméra au-dessus du sol entre 0,8 et 1,9 m, écart-type < 0,15 m."""
+    """(phase 5) Camera height above the floor between 0.8 and 1.9 m, standard deviation < 0.15 m."""
     wm, _ = mapping
     h = np.array(wm.cam_heights)
     update_report("vo", {"camera_height_median_m": float(np.median(h)), "camera_height_std_m": float(h.std())})

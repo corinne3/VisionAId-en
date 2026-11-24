@@ -17,7 +17,7 @@ uv sync           # Python 3.12, PyTorch with MPS (Apple GPU)
 - On the iPhone (Safari): `http://<Mac IP>:8080/` → download the profile.
 - **Settings → General → VPN & Device Management** → install "VisionAId CA locale".
 - **Settings → General → About → Certificate Trust Settings** → enable full trust.
-- Open `https://<Mac IP>:8443/` → **Démarrer**.
+- Open `https://<Mac IP>:8443/` → **Start**.
 
 ## 3. Run
 

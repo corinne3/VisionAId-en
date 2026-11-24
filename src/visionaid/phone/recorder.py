@@ -1,4 +1,4 @@
-"""Enregistrement d'une session téléphone sur disque (format décrit dans `docs/protocol.md`)."""
+"""Recording of a phone session to disk (format described in `docs/protocol.md`)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from visionaid.bus.messages import ClockSync, ImuBatch
 
 
 def new_session_dir(root: str | Path, name: str) -> Path:
-    """Dossier `<root>/<AAAAMMJJ-HHMMSS>_<nom>` (suffixe numérique si déjà pris)."""
+    """Folder `<root>/<YYYYMMDD-HHMMSS>_<name>` (numeric suffix if already taken)."""
     stamp = time.strftime("%Y%m%d-%H%M%S")
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name) or "session"
     base = Path(root) / f"{stamp}_{safe}"
@@ -23,7 +23,7 @@ def new_session_dir(root: str | Path, name: str) -> Path:
 
 
 class SessionRecorder:
-    """Écrit images JPEG brutes, IMU, horloge et métadonnées au fil de l'eau."""
+    """Writes raw JPEG images, IMU, clock and metadata as they come."""
 
     def __init__(self, directory: str | Path, meta: dict[str, Any] | None = None) -> None:
         self.dir = Path(directory)
@@ -48,14 +48,14 @@ class SessionRecorder:
         tmp.replace(self.dir / "meta.json")
 
     def update_meta(self, **kw: Any) -> None:
-        """Complète les métadonnées (appareil, caméra…) et les réécrit."""
+        """Completes the metadata (device, camera…) and rewrites it."""
         self.meta.update(kw)
         self._write_meta()
 
     def frame(
         self, seq: int, t_phone: float, t_recv: float, w: int, h: int, jpeg: bytes, calib: bool
     ) -> None:
-        """Enregistre une image (JPEG tel que reçu)."""
+        """Records an image (JPEG as received)."""
         if calib:
             (self.dir / "calib" / f"{seq:06d}.jpg").write_bytes(jpeg)
             self.n_calib += 1
@@ -73,7 +73,7 @@ class SessionRecorder:
             self.flush()
 
     def imu(self, batch: ImuBatch) -> None:
-        """Enregistre un lot IMU (gyro en rad/s)."""
+        """Records an IMU batch (gyro in rad/s)."""
         for i in range(len(batch)):
             self._imu.write(
                 json.dumps(
@@ -89,7 +89,7 @@ class SessionRecorder:
         self.n_imu += len(batch)
 
     def clock(self, c: ClockSync) -> None:
-        """Enregistre une estimation du décalage d'horloge."""
+        """Records an estimate of the clock offset."""
         self._clock.write(
             json.dumps(
                 {"t_recv": c.t, "offset": c.offset, "uncertainty": c.uncertainty, "rtt": c.rtt}
@@ -102,7 +102,7 @@ class SessionRecorder:
             fh.flush()
 
     def close(self) -> None:
-        """Ferme les fichiers et écrit les métadonnées finales."""
+        """Closes the files and writes the final metadata."""
         if self.closed:
             return
         self.closed = True

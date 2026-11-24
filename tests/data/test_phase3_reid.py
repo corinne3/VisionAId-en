@@ -15,19 +15,19 @@ pytestmark = [pytest.mark.slow, pytest.mark.data]
 def test_reference_photos_detected_and_reidentified(reid_bundle):
     reid, rc, det = reid_bundle
     paths = ref_paths_or_skip()
-    assert len(rc) == len(paths), "la gourde doit être trouvée sur chaque photo"
+    assert len(rc) == len(paths), "the bottle must be found on each photo"
     for p in paths:
         full = cv2.imread(str(p))
         small = cv2.resize(full, (1280, int(full.shape[0] * 1280 / full.shape[1])))
         d = det.detect(small)
         assert len(d.boxes) > 0
         s = reid.score_detections(small, d.boxes, d.masks)
-        assert s.max() >= reid.threshold, f"{p.name}: meilleur score {s.max():.3f} < seuil {reid.threshold:.3f}"
+        assert s.max() >= reid.threshold, f"{p.name}: best score {s.max():.3f} < threshold {reid.threshold:.3f}"
 
 
 def test_augmentation_recall(reid_bundle):
     reid, rc, _ = reid_bundle
-    items = positive_items(rc, 30, seed=123)  # graine différente de la calibration
+    items = positive_items(rc, 30, seed=123)  # seed different from the calibration
     s = reid.score_crops(items)
     recall = float((s >= reid.threshold).mean())
     update_report("reid", {"aug_recall": recall, "n_aug": len(items), "threshold": reid.threshold})
@@ -50,11 +50,11 @@ def test_hue_shift_fails(reid_bundle):
         blue = hue_shift(crop, 90)  # orange (H≈15) → bleu (H≈105)
         s_orig, s_blue = reid.score_crops([(crop, mask), (blue, mask)])
         assert s_orig >= reid.threshold
-        assert s_blue < reid.threshold, f"score teinte décalée {s_blue:.3f} ≥ seuil"
+        assert s_blue < reid.threshold, f"shifted hue score {s_blue:.3f} ≥ threshold"
 
 
 def dominant_hue(crop, mask, s_min: int = 80):
-    """Teinte dominante (OpenCV H) des pixels saturés, et fraction de pixels saturés."""
+    """Dominant hue (OpenCV H) of the saturated pixels, and fraction of saturated pixels."""
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)[mask]
     sat = hsv[hsv[:, 1] >= s_min]
     if len(sat) == 0:
@@ -76,7 +76,7 @@ def test_video_target_confirmed(video_perception, cfg):
 
 
 def test_video_confirmed_tracks_color_compatible(video_perception, cfg):
-    """Aucune piste confirmée sur un objet dont la teinte dominante est incompatible."""
+    """No confirmed track on an object whose dominant hue is incompatible."""
     from visionaid.io.sources import VideoFileSource
 
     dets, info = video_perception
@@ -93,7 +93,7 @@ def test_video_confirmed_tracks_color_compatible(video_perception, cfg):
         crop, m = masked_crop(f.image, d.boxes[i], None if masks is None else masks[i])
         n += 1
         hue, sat_frac = dominant_hue(crop, m)
-        # teinte dominante incompatible : objet nettement coloré hors des teintes gourde/métal chaud
+        # incompatible dominant hue: clearly coloured object outside the bottle/warm metal hues
         if sat_frac > 0.25 and not (0 <= hue <= 35 or hue >= 170):
             bad.append((f.frame_idx, hue, sat_frac))
     update_report("perception", {"color_check_frames": n, "color_incompatible": len(bad)})
@@ -112,5 +112,5 @@ def test_detector_throughput(reid_bundle, video_path):
 
 def test_threshold_file_exists():
     p = resolve_path(load_config().reid.threshold_file)
-    assert p.exists(), "lancer `make calibrate`"
+    assert p.exists(), "run `make calibrate`"
     _ = np.array(0)

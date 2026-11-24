@@ -1,4 +1,4 @@
-"""Bloc perception (détection + ReID + suivi), commun aux modes offline et temps réel."""
+"""Perception block (detection + ReID + tracking), shared by the offline and real-time modes."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ log = get_logger("perception")
 
 
 def subset(d: Detections, idx) -> Detections:
-    """Détections d'indices `idx` (boîtes, scores, labels, masques)."""
+    """Detections at indices `idx` (boxes, scores, labels, masks)."""
     idx = np.asarray(idx, int)
     return Detections(
         t=d.t,
@@ -35,14 +35,14 @@ def _empty(t: float, idx: int) -> Detections:
 
 
 class PerceptionBlock:
-    """Image → Detections avec décision « cible » (piste confirmée).
+    """Image → Detections with the "target" decision (confirmed track).
 
-    Meubles (`landmarks.prompts`) : détectés dans la même passe YOLOE que la cible, séparés des
-    détections de la cible (pas de ReID) et rangés dans `last_furniture` (et sur le bus, sujet
-    `furniture`), pour décrire où se trouve l'objet.
+    Furniture (`landmarks.prompts`): detected in the same YOLOE pass as the target, separated from
+    the target detections (no ReID) and stored in `last_furniture` (and on the bus, topic
+    `furniture`), to describe where the object is.
 
-    Cible changeable en cours de route (`set_target` / `clear_target`, commande vocale) : sans
-    cible, seuls les meubles sont détectés.
+    Target can change along the way (`set_target` / `clear_target`, voice command): without
+    a target, only furniture is detected.
     """
 
     def __init__(self, cfg, detector=None, reid=None, active: bool = True, reid_factory=None):
@@ -84,7 +84,7 @@ class PerceptionBlock:
             self.target_prompts = []
         self._apply_prompts()
 
-    # ------------------------------------------------------------------ cible
+    # ------------------------------------------------------------------ target
     @staticmethod
     def _build_reid(cfg, detector):
         from visionaid.apps.calibrate_reid import build_reid
@@ -92,16 +92,16 @@ class PerceptionBlock:
         return build_reid(cfg, detector)[0]
 
     def _apply_prompts(self) -> None:
-        """Vocabulaire du détecteur : cible + meubles (si le modèle le permet)."""
+        """Detector vocabulary: target + furniture (if the model allows it)."""
         fur = [p for p in self.furniture_prompts if p not in self.target_prompts]
         ok = False
         if hasattr(self.detector, "set_prompts") and (self.target_prompts or fur):
             ok = bool(self.detector.set_prompts(self.target_prompts + fur))
-        stub = not hasattr(self.detector, "set_prompts")  # détecteur de test : labels fournis
+        stub = not hasattr(self.detector, "set_prompts")  # test detector: labels provided
         self.furniture_set = set(fur) if (ok or stub) else set()
 
     def set_target(self, cfg, target_id: int) -> None:
-        """Nouvelle cible (config avec la fiche appliquée). La ReID de chaque cible est gardée."""
+        """New target (config with the card applied). The ReID of each target is kept."""
         from visionaid.perception.tracker import TargetTracker
 
         name = str(getattr(cfg.target, "name", "cible"))
@@ -109,7 +109,7 @@ class PerceptionBlock:
         if name not in self._targets:
             prompts = list(cfg.detector.text_prompts)
             if hasattr(det, "set_prompts"):
-                det.set_prompts(prompts)  # galerie construite sans les meubles
+                det.set_prompts(prompts)  # gallery built without the furniture
             if hasattr(det, "conf"):
                 det.conf = float(cfg.detector.conf)
             reid = self.make_reid(cfg, det)
@@ -125,7 +125,7 @@ class PerceptionBlock:
         self._apply_prompts()
 
     def clear_target(self, target_id: int) -> None:
-        """Plus de cible : seuls les meubles sont détectés."""
+        """No more target: only furniture is detected."""
         self.reid = None
         self.tracker = None
         self.target_prompts = []
@@ -166,18 +166,18 @@ class PerceptionBlock:
             colors = getattr(self.reid, "last_color", None) if len(d.boxes) else None
             d = self.tracker.update(d, scores, colors)
         d.target_id = self.target_id
-        # meubles rangés aussi sur l'objet (cache du mode offline) ; hors champs du message bus
+        # furniture also stored on the object (offline mode cache); outside the bus message fields
         d._furniture = fur
         self.times.append(time.perf_counter() - t0)
         return d
 
-    # interface Block du bus
+    # Block interface of the bus
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None:
         f = inputs.get("frame")
         if f is None:
             return None
         d = self(f)
-        if d.masks is not None and d.masks.dtype == bool:  # masques compressés pour le bus
+        if d.masks is not None and d.masks.dtype == bool:  # compressed masks for the bus
             d.masks = np.packbits(d.masks, axis=-1)
         out: dict[str, Any] = {"detections": d}
         fur = self.last_furniture
@@ -202,7 +202,7 @@ def make_perception_block(cfg_raw: dict) -> PerceptionBlock:
 def run_video_perception(
     cfg=None, video=None, use_cache: bool = True
 ) -> tuple[list[Detections], dict]:
-    """Perception sur toute la vidéo, avec cache disque (.cache/perception/<hash>.pkl)."""
+    """Perception over the whole video, with a disk cache (.cache/perception/<hash>.pkl)."""
 
     cfg = cfg or load_config()
     video = resolve_path(video or cfg.paths.video)
@@ -216,8 +216,8 @@ def run_video_perception(
     )
     th_file = resolve_path(cfg.reid.threshold_file)
     key_cfg += th_file.read_text() if th_file.exists() else ""
-    # le code du suivi et de la ReID fait partie de la clé : sinon une modification du code
-    # relisait d'anciennes détections du cache (mesures « avant/après » identiques)
+    # the tracking and ReID code is part of the key: otherwise a code change
+    # re-read old detections from the cache (identical "before/after" measurements)
     here = Path(__file__).parent
     key_cfg += "".join((here / f).read_text() for f in ("tracker.py", "reid.py", "pipeline.py"))
     from visionaid.io.session import media_hash, open_media
@@ -228,11 +228,11 @@ def run_video_perception(
         data = pickle.loads(cpath.read_bytes())
         return data["dets"], data["info"]
     block = PerceptionBlock(cfg)
-    src = open_media(cfg, video)  # vidéo ou session téléphone
+    src = open_media(cfg, video)  # video or phone session
     dets = []
     while (f := src.read()) is not None:
         d = block(f)
-        if d.masks is not None:  # compression des masques (packbits sur la largeur)
+        if d.masks is not None:  # mask compression (packbits along the width)
             d.masks = np.packbits(d.masks, axis=-1)
         fur = getattr(d, "_furniture", None)
         if fur is not None and fur.masks is not None and fur.masks.dtype == bool:
@@ -256,7 +256,7 @@ def run_video_perception(
 
 
 def unpack_masks(d: Detections, width: int) -> np.ndarray | None:
-    """Décompresse les masques stockés en cache (packbits)."""
+    """Decompresses the masks stored in the cache (packbits)."""
     if d.masks is None:
         return None
     if d.masks.dtype == bool:

@@ -1,13 +1,13 @@
-"""Calibration IMU ↔ caméra à partir d'une session : biais du gyroscope, décalage temporel, rotation.
+"""IMU ↔ camera calibration from a session: gyroscope bias, time offset, rotation.
 
-1. **Biais** : moyenne du gyroscope sur les segments immobiles (gyro et accélération stables).
-2. **Rotation visuelle** entre images successives (`VisualRotation`) → vitesse angulaire caméra.
-3. **Décalage temporel** δ : maximise la corrélation entre ‖ω_gyro‖ moyennée sur [t_i+δ, t_j+δ]
-   et ‖ω_visuelle‖ (insensible à la rotation inconnue).
-4. **Rotation** `R_cam_imu` par Kabsch sur les paires (ω_gyro, ω_visuelle), et **facteur
-   d'échelle** ‖ω_vis‖/‖R ω_gyro‖ : ≈ 1 si les unités sont bonnes, ≈ π/180 (ou 180/π) sinon.
+1. **Bias**: mean of the gyroscope over the still segments (stable gyro and acceleration).
+2. **Visual rotation** between successive images (`VisualRotation`) → camera angular velocity.
+3. **Time offset** δ: maximises the correlation between ‖ω_gyro‖ averaged over [t_i+δ, t_j+δ]
+   and ‖ω_visual‖ (insensitive to the unknown rotation).
+4. **Rotation** `R_cam_imu` by Kabsch on the (ω_gyro, ω_visual) pairs, and **scale
+   factor** ‖ω_vis‖/‖R ω_gyro‖: ≈ 1 if the units are right, ≈ π/180 (or 180/π) otherwise.
 
-Convention : une image horodatée t (horloge téléphone) correspond à l'instant IMU t + δ.
+Convention: an image timestamped t (phone clock) corresponds to the IMU instant t + δ.
 """
 
 from __future__ import annotations
@@ -24,24 +24,24 @@ from visionaid.calib.rotation import VisualRotation, kabsch, rotation_angle_deg
 
 @dataclass
 class ImuCamCalibration:
-    """Résultat de la calibration IMU ↔ caméra."""
+    """Result of the IMU ↔ camera calibration."""
 
     R_cam_imu: np.ndarray
-    gyro_bias: np.ndarray  # rad/s, repère IMU (après correction d'unités)
+    gyro_bias: np.ndarray  # rad/s, IMU frame (after unit correction)
     time_offset_s: float  # δ : instant IMU = instant image + δ
-    gyro_scale: float  # ‖ω_vis‖ / ‖R ω_gyro‖ mesuré (avant correction)
+    gyro_scale: float  # measured ‖ω_vis‖ / ‖R ω_gyro‖ (before correction)
     units_ok: bool
-    units_fix: float  # facteur à appliquer au gyroscope (1, π/180 ou 180/π)
+    units_fix: float  # factor to apply to the gyroscope (1, π/180 or 180/π)
     correlation: float
     n_pairs: int
-    residual_deg_s: float  # résidu médian ‖ω_vis − R ω_gyro‖ (deg/s)
-    prior_angle_deg: float  # écart à la rotation a priori
-    static_s: float  # durée immobile utilisée pour le biais
+    residual_deg_s: float  # median residual ‖ω_vis − R ω_gyro‖ (deg/s)
+    prior_angle_deg: float  # difference from the prior rotation
+    static_s: float  # still duration used for the bias
     notes: list[str] = field(default_factory=list)
-    # accéléromètre : convention d'axes a priori, signe mesuré (Safari iOS l'inverse)
+    # accelerometer: prior axis convention, measured sign (Safari iOS inverts it)
     R_cam_acc: np.ndarray | None = None
     accel_sign: float = 1.0
-    accel_tilt_deg: float = float("nan")  # écart « haut » mesuré / +y appareil (portrait)
+    accel_tilt_deg: float = float("nan")  # measured "up" difference / device +y (portrait)
 
     def to_yaml(self, path: str | Path, extra: dict | None = None) -> None:
         d = asdict(self)
@@ -70,7 +70,7 @@ def static_mask(
     gyro_std: float = 0.03,
     acc_std: float = 0.15,
 ) -> np.ndarray:
-    """Échantillons appartenant à une fenêtre immobile (écarts-types faibles)."""
+    """Samples belonging to a still window (low standard deviations)."""
     n = len(t)
     mask = np.zeros(n, bool)
     if n < 5:
@@ -86,7 +86,7 @@ def static_mask(
 
 
 def mean_gyro(t: np.ndarray, gyro: np.ndarray, a: float, b: float) -> np.ndarray | None:
-    """Moyenne temporelle du gyroscope sur [a, b] (intégration trapézoïdale par interpolation)."""
+    """Time average of the gyroscope over [a, b] (trapezoidal integration by interpolation)."""
     if b <= a or a < t[0] or b > t[-1]:
         return None
     inside = (t > a) & (t < b)
@@ -96,9 +96,9 @@ def mean_gyro(t: np.ndarray, gyro: np.ndarray, a: float, b: float) -> np.ndarray
 
 
 def visual_rates(images, times, K, every: int = 1) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Vitesses angulaires visuelles (rad/s, repère caméra) entre images successives.
+    """Visual angular velocities (rad/s, camera frame) between successive images.
 
-    Renvoie (t_début, t_fin, ω) pour les paires réussies.
+    Returns (t_start, t_end, ω) for the successful pairs.
     """
     vr = VisualRotation()
     feats = []
@@ -136,22 +136,22 @@ def calibrate_imu_cam(
     max_offset_s: float = 0.3,
     min_rate: float = 0.15,
 ) -> ImuCamCalibration:
-    """Calibration à partir de l'IMU et des vitesses visuelles (voir docstring du module)."""
+    """Calibration from the IMU and the visual velocities (see the module docstring)."""
     notes: list[str] = []
     R_prior = np.eye(3) if R_prior is None else np.asarray(R_prior, float)
     gyro = np.asarray(imu_gyro, float)
-    # 1. biais sur les segments immobiles
+    # 1. bias on the still segments
     sm = static_mask(imu_t, gyro, np.asarray(imu_accel, float))
     static_s = float(sm.sum() / max(len(imu_t), 1) * (imu_t[-1] - imu_t[0])) if len(imu_t) else 0.0
     if sm.sum() >= 10:
         bias = gyro[sm].mean(0)
     else:
         bias = np.zeros(3)
-        notes.append("aucun segment immobile : biais supposé nul")
+        notes.append("no still segment: bias assumed to be zero")
     g = gyro - bias
     vn = np.linalg.norm(vis_w, axis=1)
 
-    # 2. décalage temporel : corrélation des normes (grossier 5 ms puis fin 0,5 ms)
+    # 2. time offset: correlation of the norms (coarse 5 ms then fine 0.5 ms)
     def corr_at(d: float) -> tuple[float, np.ndarray, np.ndarray]:
         gm, keep = [], []
         for k in range(len(vis_t0)):
@@ -172,12 +172,12 @@ def calibrate_imu_cam(
     delta = float(fine[int(np.argmax(fscores))])
     corr, gm, keep = corr_at(delta)
     if corr < 0.5:
-        notes.append(f"corrélation faible ({corr:.2f}) : mouvement insuffisant ou image floue")
-    # 3. rotation et échelle sur les paires avec assez de mouvement
+        notes.append(f"weak correlation ({corr:.2f}): not enough motion or blurred image")
+    # 3. rotation and scale on the pairs with enough motion
     vw = vis_w[keep]
     moving = (np.linalg.norm(vw, axis=1) > min_rate) & (np.linalg.norm(gm, axis=1) > 1e-6)
     if moving.sum() < 5:
-        notes.append("trop peu de rotation pour estimer R_cam_imu : a priori conservé")
+        notes.append("too little rotation to estimate R_cam_imu: prior kept")
         R = R_prior
         scale = 1.0
     else:
@@ -185,7 +185,7 @@ def calibrate_imu_cam(
         R = kabsch(a, b)
         ra = a @ R.T
         scale = float(np.sum(ra * b) / np.sum(ra * ra))
-    # 4. unités
+    # 4. units
     units_fix = 1.0
     units_ok = abs(scale - 1.0) < 0.15
     if not units_ok:
@@ -193,21 +193,21 @@ def calibrate_imu_cam(
             if abs(scale / cand - 1.0) < 0.15:
                 units_fix = cand
                 notes.append(
-                    f"échelle du gyroscope {scale:.4f} ≈ {cand:.4f} : unités incorrectes "
-                    "(deg/s ↔ rad/s), correction proposée"
+                    f"gyroscope scale {scale:.4f} ≈ {cand:.4f}: incorrect units "
+                    "(deg/s ↔ rad/s), correction proposed"
                 )
                 break
         else:
-            notes.append(f"échelle du gyroscope inattendue : {scale:.3f}")
+            notes.append(f"unexpected gyroscope scale: {scale:.3f}")
     res = (
         np.degrees(np.median(np.linalg.norm(vw - scale * gm @ R.T, axis=1)))
         if len(vw)
         else math.nan
     )
-    # 5. accéléromètre : au repos, téléphone en portrait sur le torse, le haut est +y appareil
-    #    (norme W3C : la mesure « gravité incluse » pointe vers le haut). Safari iOS inverse le
-    #    signe : on le mesure sur les segments immobiles. Les axes, eux, suivent la norme : le
-    #    R_cam_imu calibré (qui absorbe la permutation d'axes du gyroscope) ne s'y applique pas.
+    # 5. accelerometer: at rest, phone in portrait on the chest, up is device +y
+    #    (W3C standard: the "gravity included" measurement points upward). Safari iOS inverts the
+    #    sign: we measure it on the still segments. The axes follow the standard: the
+    #    calibrated R_cam_imu (which absorbs the gyroscope axis permutation) does not apply to it.
     accel_sign, tilt = 1.0, math.nan
     acc = np.asarray(imu_accel, float)
     if sm.sum() >= 10:
@@ -216,11 +216,11 @@ def calibrate_imu_cam(
         up = accel_sign * a_mean / max(np.linalg.norm(a_mean), 1e-9)
         tilt = float(np.degrees(np.arccos(np.clip(up[1], -1, 1))))
         if accel_sign < 0:
-            notes.append("accéléromètre de signe inversé (Safari iOS) : corrigé (accel_sign = −1)")
+            notes.append("accelerometer with inverted sign (Safari iOS): corrected (accel_sign = −1)")
         if tilt > 35:
-            notes.append(f"téléphone incliné de {tilt:.0f}° au repos : signe à vérifier")
+            notes.append(f"phone tilted by {tilt:.0f}° at rest: sign to check")
     else:
-        notes.append("pas de segment immobile : signe de l'accéléromètre supposé conforme")
+        notes.append("no still segment: accelerometer sign assumed standard")
     return ImuCamCalibration(
         R_cam_imu=R,
         gyro_bias=bias * units_fix,

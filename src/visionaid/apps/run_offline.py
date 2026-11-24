@@ -1,4 +1,4 @@
-"""Mode offline déterministe : toute la vidéo → annotated.mp4, session.rrd, guidance.wav, report.json."""
+"""Deterministic offline mode: whole video → annotated.mp4, session.rrd, guidance.wav, report.json."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def _ffmpeg(args: list[str], timeout: int = 600) -> bool:
         subprocess.run(["ffmpeg", "-v", "error", "-y", *args], check=True, timeout=timeout)
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-        log.warning("ffmpeg a échoué : %s", e)
+        log.warning("ffmpeg failed: %s", e)
         return False
 
 
@@ -48,12 +48,12 @@ def run(
     rerun=None,
     report_section: str | None = "offline",
 ) -> dict:
-    """Exécute le pipeline complet ; retourne le résumé (également fusionné dans report.json)."""
+    """Runs the full pipeline; returns the summary (also merged into report.json)."""
     cfg = cfg or load_config()
     out = Path(out_dir or resolve_path(cfg.paths.outputs))
     out.mkdir(parents=True, exist_ok=True)
     t_start = time.perf_counter()
-    src = open_media(cfg, video, max_frames=max_frames)  # vidéo ou session téléphone
+    src = open_media(cfg, video, max_frames=max_frames)  # video or phone session
     if dets_list is None and perception is None:
         dets_list, pinfo = run_video_perception(cfg, video)
     else:
@@ -62,14 +62,14 @@ def run(
     depth_est = depth_est or video_depth_estimator(cfg, video)
     imu_source = None
     if hasattr(src, "session") and src.session.camera_height_m:
-        cfg.body.camera_height_m = src.session.camera_height_m  # hauteur mesurée à l'enregistrement
+        cfg.body.camera_height_m = src.session.camera_height_m  # height measured at recording time
     if hasattr(src, "session"):
         from visionaid.io.session import SessionImu
 
         imu_source = SessionImu(src.session) if len(src.session.imu_t) else None
     pipe = OfflinePipeline(cfg, perception, depth_est, imu_source=imu_source)
-    # nom propre à chaque lancement : deux rejeux simultanés dans le même dossier ne doivent pas
-    # se supprimer mutuellement leur vidéo intermédiaire
+    # name specific to each run: two simultaneous replays in the same folder must not
+    # delete each other's intermediate video
     tmp_video = out / f"annotated_raw_{os.getpid()}.mp4"
     vw = None
     rlog = RerunLogger(out / "session.rrd", enabled=bool(cfg.viz.rerun if rerun is None else rerun))
@@ -113,7 +113,7 @@ def run(
     if vw is not None:
         vw.release()
     rlog.close()
-    # audio synchronisé
+    # synchronised audio
     t0 = pipe.records[0].t if pipe.records else 0.0
     duration = n / src.fps
     ar = AudioRenderer(cfg.audio, getattr(cfg, "tts", None), resolve_path(cfg.paths.cache) / "tts")
@@ -150,7 +150,7 @@ def run(
         ]
     )
     tmp_video.unlink(missing_ok=True)
-    # carte finale
+    # final map
     if pipe.world.floor.ready:
         from visionaid.viz.costmap_png import render_costmap
 
@@ -169,7 +169,7 @@ def run(
                 cost=pipe.world.grid.cost(s),
             ),
         )
-    # métriques
+    # metrics
     states: dict[str, float] = {}
     for r in pipe.records:
         states[r.state] = states.get(r.state, 0) + 1 / src.fps
@@ -216,7 +216,7 @@ def run(
     if report_section:
         update_report(report_section, summary)
     log.info(
-        "Offline terminé : %d frames, état final %s, distance %s",
+        "Offline finished: %d frames, final state %s, distance %s",
         n,
         summary["final_state"],
         final_dist,
@@ -229,13 +229,13 @@ def main(argv=None):
     ap.add_argument("--config", default=None)
     ap.add_argument("--video", default=None)
     ap.add_argument(
-        "--session", default=None, help="dossier de session téléphone (data/sessions/…)"
+        "--session", default=None, help="phone session folder (data/sessions/…)"
     )
     ap.add_argument("--max-frames", type=int, default=None)
-    ap.add_argument("--target", default=None, help="prompt fixe, ex. « où sont mes clés »")
+    ap.add_argument("--target", default=None, help="fixed prompt, e.g. « où sont mes clés »")
     args = ap.parse_args(argv)
     target = args.target
-    if target is None and args.session:  # cible déclarée à l'enregistrement de la session
+    if target is None and args.session:  # target declared when the session was recorded
         from visionaid.io.session import load_session
 
         target = load_session(args.session).meta.get("target")

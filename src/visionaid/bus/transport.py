@@ -1,4 +1,4 @@
-"""Transport ZeroMQ pub/sub : enveloppe = sujet | horodatage d'envoi | message msgpack."""
+"""ZeroMQ pub/sub transport: envelope = topic | send timestamp | msgpack message."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def endpoint(port: int, host: str = "127.0.0.1") -> str:
 
 
 class Publisher:
-    """Publie des messages typés sur un port (bind)."""
+    """Publishes typed messages on a port (bind)."""
 
     def __init__(self, address: str, hwm: int = 10000, ctx: zmq.Context | None = None) -> None:
         self.ctx = ctx or zmq.Context.instance()
@@ -37,10 +37,10 @@ class Publisher:
 
 
 class Subscriber:
-    """Abonné à un ou plusieurs sujets.
+    """Subscriber to one or more topics.
 
-    `conflate=True` : seule la dernière valeur est conservée (flux lourds). ZMQ_CONFLATE
-    n'accepte qu'un sujet par socket ; on crée donc une socket par sujet dans ce mode.
+    `conflate=True`: only the latest value is kept (heavy streams). ZMQ_CONFLATE
+    only accepts one topic per socket; so one socket per topic is created in this mode.
     """
 
     def __init__(
@@ -78,7 +78,7 @@ class Subscriber:
         return topic, sent, decode(raw[i + 9 :])
 
     def recv(self, timeout_ms: int = 100) -> tuple[str, float, Any] | None:
-        """Reçoit un message (bloquant jusqu'à timeout). Retourne (sujet, t_envoi, msg)."""
+        """Receives a message (blocking until timeout). Returns (topic, t_send, msg)."""
         events = dict(self.poller.poll(timeout_ms))
         for s in self.socks:
             if s in events:
@@ -86,7 +86,7 @@ class Subscriber:
         return None
 
     def drain(self, timeout_ms: int = 0) -> dict[str, tuple[float, Any]]:
-        """Vide les files sans bloquer (après un poll optionnel) : dernier message par sujet."""
+        """Empties the queues without blocking (after an optional poll): latest message per topic."""
         out: dict[str, tuple[float, Any]] = {}
         if timeout_ms > 0 and not self.poller.poll(timeout_ms):
             return out
@@ -101,7 +101,7 @@ class Subscriber:
         return out
 
     def drain_all(self) -> list[tuple[str, float, Any]]:
-        """Vide les files sans bloquer : tous les messages reçus, dans l'ordre d'arrivée."""
+        """Empties the queues without blocking: all received messages, in order of arrival."""
         out: list[tuple[str, float, Any]] = []
         for s in self.socks:
             while True:

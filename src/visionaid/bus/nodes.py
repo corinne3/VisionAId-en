@@ -1,4 +1,4 @@
-"""Nœud générique du bus : boucle, cadence cible, mesure de latence, arrêt propre."""
+"""Generic bus node: loop, target rate, latency measurement, clean stop."""
 
 from __future__ import annotations
 
@@ -13,23 +13,23 @@ from visionaid.utils.timing import LatencyStats
 
 
 class Block(Protocol):
-    """Bloc métier : reçoit le dernier message de chaque entrée, renvoie {sujet: message}."""
+    """Business block: receives the latest message of each input, returns {topic: message}."""
 
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None: ...
 
 
 @dataclass
 class NodeSpec:
-    """Description d'un nœud du graphe."""
+    """Description of a graph node."""
 
     name: str
-    factory: str  # "module:callable" retournant un Block ; reçoit (cfg_raw: dict)
+    factory: str  # "module:callable" returning a Block; receives (cfg_raw: dict)
     inputs: list[str] = field(default_factory=list)  # sujets lus
-    outputs: list[str] = field(default_factory=list)  # sujets publiés
-    trigger: str | None = None  # sujet déclencheur ; None = cadence fixe (rate_hz)
-    rate_hz: float = 0.0  # cadence max (0 = illimitée si trigger)
-    heavy_inputs: list[str] = field(default_factory=list)  # entrées en mode « dernière valeur »
-    accumulate_inputs: list[str] = field(default_factory=list)  # entrées livrées en liste (IMU)
+    outputs: list[str] = field(default_factory=list)  # published topics
+    trigger: str | None = None  # triggering topic; None = fixed rate (rate_hz)
+    rate_hz: float = 0.0  # max rate (0 = unlimited if trigger)
+    heavy_inputs: list[str] = field(default_factory=list)  # inputs in "latest value" mode
+    accumulate_inputs: list[str] = field(default_factory=list)  # inputs delivered as a list (IMU)
 
 
 def load_factory(path: str):
@@ -49,7 +49,7 @@ def run_node(
     stats_queue=None,
     recv_timeout_ms: int = 50,
 ) -> None:
-    """Boucle d'un nœud (exécutée dans un sous-processus)."""
+    """Loop of a node (run in a subprocess)."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     block = load_factory(spec.factory)(cfg_raw)
     pub = Publisher(endpoint(ports[spec.name])) if spec.outputs else None
@@ -99,7 +99,7 @@ def run_node(
             next_tick = max(next_tick + period, now) if period else now
             t0 = time.perf_counter()
             ins = dict(latest)
-            for topic in spec.accumulate_inputs:  # tout ce qui est arrivé depuis le dernier appel
+            for topic in spec.accumulate_inputs:  # everything that arrived since the last call
                 ins[topic] = acc.pop(topic, [])
             out = block.process(ins)
             stats.add("process", time.perf_counter() - t0)

@@ -1,4 +1,4 @@
-"""Rendu PNG d'une costmap (vue de dessus, y vers le haut)."""
+"""PNG rendering of a costmap (top-down view, y up)."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ def render_costmap(
     scale: int = 3,
     cost: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Image BGR : libre blanc, occupé noir, inconnu gris, zone gonflée rose, trajectoire bleue,
-    chemin vert, cible orange."""
+    """BGR image: free white, occupied black, unknown grey, inflated zone pink, trajectory blue,
+    path green, target orange."""
     img = np.full(state.shape + (3,), 150, np.uint8)
     img[state == FREE] = (255, 255, 255)
     if cost is not None:

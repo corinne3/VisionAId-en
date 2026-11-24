@@ -1,4 +1,4 @@
-"""Suivi multi-objets (IoU + vitesse constante, affectation hongroise) et décision « cible » par piste."""
+"""Multi-object tracking (IoU + constant velocity, Hungarian assignment) and per-track "target" decision."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from visionaid.bus.messages import Detections
 
 
 def iou_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """IoU entre boîtes xyxy (N,4) et (M,4)."""
+    """IoU between xyxy boxes (N,4) and (M,4)."""
     if len(a) == 0 or len(b) == 0:
         return np.zeros((len(a), len(b)))
     x0 = np.maximum(a[:, None, 0], b[None, :, 0])
@@ -25,7 +25,7 @@ def iou_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def center_dist(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Distance entre centres normalisée par la diagonale de la boîte de piste."""
+    """Distance between centres normalised by the diagonal of the track box."""
     ca = np.stack([(a[:, 0] + a[:, 2]) / 2, (a[:, 1] + a[:, 3]) / 2], 1)
     cb = np.stack([(b[:, 0] + b[:, 2]) / 2, (b[:, 1] + b[:, 3]) / 2], 1)
     diag = np.hypot(a[:, 2] - a[:, 0], a[:, 3] - a[:, 1])
@@ -34,7 +34,7 @@ def center_dist(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 @dataclass
 class Track:
-    """Piste d'un objet."""
+    """Track of an object."""
 
     id: int
     box: np.ndarray
@@ -42,19 +42,19 @@ class Track:
     hits: int = 1
     misses: int = 0
     score_ema: float = 0.0
-    above: int = 0  # frames consécutives au-dessus du seuil
-    below: int = 0  # frames consécutives sous le seuil bas (une fois confirmée)
+    above: int = 0  # consecutive frames above the threshold
+    below: int = 0  # consecutive frames below the low threshold (once confirmed)
     confirmed: bool = False
     label: str = ""
-    cand_hits: int = 0  # images consécutives au-dessus du seuil « probable »
-    color_ema: float | None = None  # score de couleur lissé (None : pas de modèle de couleur)
+    cand_hits: int = 0  # consecutive frames above the "probable" threshold
+    color_ema: float | None = None  # smoothed colour score (None: no colour model)
 
     def predict(self) -> np.ndarray:
         return self.box + self.vel
 
 
 class TargetTracker:
-    """Pistes + hystérésis : confirmée après N frames ≥ seuil, perdue après M frames sans détection."""
+    """Tracks + hysteresis: confirmed after N frames ≥ threshold, lost after M frames without detection."""
 
     def __init__(self, cfg, threshold: float) -> None:
         t = cfg.tracker
@@ -68,7 +68,7 @@ class TargetTracker:
         self.reject_threshold = 0.6 * self.threshold
         self.cand_threshold = float(getattr(t, "candidate_ratio", 1.0)) * self.threshold
         self.cand_frames = int(getattr(t, "candidate_frames", 10**6))
-        # une cible « probable » doit aussi avoir la bonne couleur (thermos noir ≠ gourde orange)
+        # a "probable" target must also have the right colour (black thermos ≠ orange bottle)
         self.cand_min_color = float(getattr(t, "candidate_min_color", 0.0) or 0.0)
         self.candidate_id = -1
         self.tracks: list[Track] = []
@@ -83,8 +83,8 @@ class TargetTracker:
         cd = center_dist(pred, boxes)
         cost = 1.0 - iou + 0.5 * np.minimum(cd, 2.0)
         gate = (iou >= self.iou_match) | (cd < 0.5)
-        # Gating d'apparence : une piste confirmée ne peut pas absorber un objet d'apparence
-        # incompatible (sinon elle « saute » sur un voisin quand la cible n'est pas détectée).
+        # Appearance gating: a confirmed track cannot absorb an object with an incompatible
+        # appearance (otherwise it "jumps" onto a neighbour when the target is not detected).
         conf = np.array([t.confirmed for t in self.tracks])
         incompatible = scores[None, :] < self.reject_threshold
         gate &= ~(conf[:, None] & incompatible)
@@ -98,9 +98,9 @@ class TargetTracker:
         reid_scores: np.ndarray | None,
         color_scores: np.ndarray | None = None,
     ) -> Detections:
-        """Met à jour les pistes ; remplit `track_ids`, `reid_scores`, `target_idx`, `target_track_id`.
+        """Updates the tracks; fills `track_ids`, `reid_scores`, `target_idx`, `target_track_id`.
 
-        `color_scores` (optionnel) : part couleur du score ReID, exigée pour une cible probable.
+        `color_scores` (optional): colour share of the ReID score, required for a probable target.
         """
         n = len(dets.boxes)
         scores = (
@@ -148,15 +148,15 @@ class TargetTracker:
         target_idx = -1
         if self.target_id >= 0:
             hits = np.where(track_ids == self.target_id)[0]
-            # la détection n'est attribuée à la cible que si son apparence reste plausible
+            # the detection is only assigned to the target if its appearance stays plausible
             if len(hits) and scores[hits[0]] >= self.low_threshold:
                 target_idx = int(hits[0])
         dets.track_ids = track_ids
         dets.reid_scores = scores
         dets.target_idx = target_idx
         dets.target_track_id = self.target_id
-        # cible probable : tant qu'aucune cible n'est confirmée, meilleure piste stable au-dessus
-        # du seuil « probable » (gourde lointaine : score juste sous le seuil de confirmation)
+        # probable target: as long as no target is confirmed, best stable track above
+        # the "probable" threshold (distant bottle: score just below the confirmation threshold)
         dets.candidate_idx = -1
         self.candidate_id = -1
         if target_idx < 0 and self.target_id < 0:
@@ -185,10 +185,10 @@ class TargetTracker:
     def _update_score(self, tr: Track, s: float, init: bool = False) -> None:
         if not init:
             tr.score_ema = self.alpha * s + (1 - self.alpha) * tr.score_ema
-        # persistance jugée sur le score lissé : de loin, le score image par image oscille
-        # autour du seuil (0,46-0,55 pour 0,49) et un critère « 5 images d'affilée » repartait
-        # sans cesse de zéro (live4 : gourde nettement vue de 26 à 53 s, reconnue à 55 s).
-        # Les faux objets de forme proche restent écartés par la couleur (candidate_min_color).
+        # persistence judged on the smoothed score: from afar, the frame-by-frame score oscillates
+        # around the threshold (0.46-0.55 for 0.49) and a "5 frames in a row" criterion kept
+        # restarting from zero (live4: bottle clearly seen from 26 to 53 s, recognised at 55 s).
+        # False objects of similar shape are still rejected by colour (candidate_min_color).
         tr.cand_hits = tr.cand_hits + 1 if tr.score_ema >= self.cand_threshold else 0
         if s >= self.threshold:
             tr.above += 1

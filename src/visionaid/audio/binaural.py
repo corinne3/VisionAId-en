@@ -1,9 +1,9 @@
-"""Spatialisation binaurale paramétrique déterministe (sans HRTF téléchargée).
+"""Deterministic parametric binaural spatialisation (no downloaded HRTF).
 
-- ITD : formule de Woodworth, rayon de tête configurable (8,75 cm) ;
-- ILD : filtre d'ombre de la tête de Brown & Duda (1998), un pôle / un zéro par oreille ;
-- avant/arrière : atténuation des aigus pour les sources situées derrière.
-Azimut positif à gauche (rad), 0 = devant. Les paramètres varient par échantillon (pas de saut).
+- ITD: Woodworth formula, configurable head radius (8.75 cm);
+- ILD: Brown & Duda (1998) head shadow filter, one pole / one zero per ear;
+- front/back: treble attenuation for sources located behind.
+Azimuth positive to the left (rad), 0 = in front. Parameters vary per sample (no jump).
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ THETA_MIN = math.radians(150.0)
 
 
 def woodworth_itd(az: float | np.ndarray, head_radius: float = 0.0875, c: float = 343.0):
-    """ITD (s), positive quand la source est à gauche (l'oreille gauche est en avance)."""
+    """ITD (s), positive when the source is on the left (the left ear leads)."""
     az = np.asarray(az, float)
-    lat = np.arcsin(np.clip(np.sin(az), -1.0, 1.0))  # angle latéral ∈ [−π/2, π/2]
+    lat = np.arcsin(np.clip(np.sin(az), -1.0, 1.0))  # lateral angle ∈ [−π/2, π/2]
     return head_radius / c * (np.abs(lat) + np.sin(np.abs(lat))) * np.sign(lat)
 
 
@@ -36,13 +36,13 @@ def _wrap_angle(x):
 
 @njit(cache=True)
 def spatialize_kernel(mono, az, fs, head_radius, c, back_cutoff):
-    """mono (N,), az (N,) → stéréo (N,2)."""
+    """mono (N,), az (N,) → stereo (N,2)."""
     n = mono.shape[0]
     out = np.zeros((n, 2))
     K = 2.0 * fs
     beta = 2.0 * c / head_radius
     maxd = int(head_radius / c * (math.pi / 2 + 1.0) * fs) + 4
-    # états des filtres
+    # filter states
     xl1 = 0.0
     yl1 = 0.0
     xr1 = 0.0
@@ -65,7 +65,7 @@ def spatialize_kernel(mono, az, fs, head_radius, c, back_cutoff):
             dr = itd * fs
         else:
             dl = itd * fs
-        # retards fractionnaires (interpolation linéaire)
+        # fractional delays (linear interpolation)
         xl = 0.0
         xr = 0.0
         for ch in range(2):
@@ -83,7 +83,7 @@ def spatialize_kernel(mono, az, fs, head_radius, c, back_cutoff):
                 xl = v
             else:
                 xr = v
-        # ombre de la tête : angle entre la source et chaque oreille (gauche à +90°, droite à −90°)
+        # head shadow: angle between the source and each ear (left at +90°, right at −90°)
         th_l = abs(_wrap_angle(a - math.pi / 2))
         th_r = abs(_wrap_angle(a + math.pi / 2))
         al = _alpha(th_l)
@@ -99,8 +99,8 @@ def spatialize_kernel(mono, az, fs, head_radius, c, back_cutoff):
         yl1 = yl
         xr1 = xr
         yr1 = yr
-        # indice avant/arrière : passe-bas mélangé selon « l'arrière-ité »
-        back = -2.0 * math.cos(a)  # 0 à 90°, 1 dès 120° (continu)
+        # front/back cue: low-pass mixed according to "rear-ness"
+        back = -2.0 * math.cos(a)  # 0 at 90°, 1 from 120° (continuous)
         if back < 0.0:
             back = 0.0
         if back > 1.0:
@@ -121,7 +121,7 @@ def spatialize(
     c: float = 343.0,
     back_cutoff: float = 2500.0,
 ) -> np.ndarray:
-    """Spatialise un signal mono ; `az` scalaire ou par échantillon (rad, gauche positif)."""
+    """Spatialises a mono signal; `az` scalar or per sample (rad, left positive)."""
     mono = np.ascontiguousarray(mono, np.float64)
     azv = (
         np.full(mono.shape[0], float(az))
@@ -132,7 +132,7 @@ def spatialize(
 
 
 def smooth_azimuth(az: np.ndarray, fs: int, tau: float) -> np.ndarray:
-    """Lissage exponentiel d'un azimut par échantillon, sur le cercle (pas de saut à ±π)."""
+    """Exponential smoothing of a per-sample azimuth, on the circle (no jump at ±π)."""
     if tau <= 0:
         return az
     return _smooth_az(np.ascontiguousarray(az, np.float64), math.exp(-1.0 / (tau * fs)))

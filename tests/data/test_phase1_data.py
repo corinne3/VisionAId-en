@@ -16,5 +16,5 @@ def test_read_full_video(video_path, cfg):
         n += 1
     assert n == src.frame_count
     assert f is None
-    # vidéo portrait après rotation
+    # portrait video after rotation
     assert src.out_h > src.out_w

@@ -49,7 +49,7 @@ def _examples():
             0.05,
         ),
         M.Path(1.0, 1, np.random.rand(5, 2), np.array([1.0, 1.0]), np.array([2.0, 2.0]), True, 3.2),
-        M.GuidanceCue(1.0, 1, "NAVIGATING", 0.3, -0.1, 2.0, 0.0, "tout droit"),
+        M.GuidanceCue(1.0, 1, "NAVIGATING", 0.3, -0.1, 2.0, 0.0, "straight ahead"),
     ]
 
 
@@ -116,7 +116,7 @@ def test_conflate_slow_subscriber():
     ages = []
     try:
         for _ in range(15):
-            time.sleep(0.1)  # abonné 10× plus lent
+            time.sleep(0.1)  # subscriber 10× slower
             r = sub.recv(200)
             if r:
                 ages.append(time.time() - r[2].t)
@@ -126,8 +126,8 @@ def test_conflate_slow_subscriber():
         pub.close()
         sub.close()
     assert len(ages) >= 10
-    assert np.median(ages) < 2 * period + 0.005  # tolérance d'ordonnancement
-    assert max(ages) < 0.1  # jamais d'arriéré accumulé
+    assert np.median(ages) < 2 * period + 0.005  # scheduling tolerance
+    assert max(ages) < 0.1  # never any accumulated backlog
 
 
 def test_latency_640x480():
@@ -172,7 +172,7 @@ def test_runner_start_stop():
     assert r.alive() == []
     assert all(p.exitcode is not None for p in r.procs)
     assert r.stats["sink"]["_block"]["n"] > 10
-    # l'écho est plus lent que la source : la conflation garde des entrées fraîches
+    # the echo is slower than the source: conflation keeps fresh inputs
     assert r.stats["echo"]["age_in:frame"]["p50_ms"] < 60
 
 

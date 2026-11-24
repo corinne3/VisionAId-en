@@ -1,4 +1,4 @@
-"""Sources de pose : odométrie visuelle (implémentée) et ARKit (stub)."""
+"""Pose sources: visual odometry (implemented) and ARKit (stub)."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from visionaid.pose.vo import RGBDOdometry
 
 @runtime_checkable
 class PoseSource(Protocol):
-    """Contrat : (frame, profondeur) → Pose horodatée (T_world_cam, qualité)."""
+    """Contract: (frame, depth) → timestamped Pose (T_world_cam, quality)."""
 
     def update(self, frame: Frame, depth: Depth | None) -> Pose: ...
 
 
 class VisualOdometry:
-    """PoseSource par odométrie RGB-D (profondeur métrique monoculaire comme canal D)."""
+    """PoseSource by RGB-D odometry (monocular metric depth as the D channel)."""
 
     def __init__(self, cfg) -> None:
         self.vo = RGBDOdometry(cfg.vo)
@@ -32,7 +32,7 @@ class VisualOdometry:
     def lost_fraction(self) -> float:
         return self.vo.n_lost / max(self.vo.n_frames, 1)
 
-    # interface Block du bus
+    # Block interface of the bus
     def process(self, inputs: dict[str, Any]) -> dict[str, Any] | None:
         f, d = inputs.get("frame"), inputs.get("depth")
         if f is None or d is None or d.frame_idx != f.frame_idx:
@@ -41,23 +41,23 @@ class VisualOdometry:
 
 
 class ArkitPoseSource:
-    """Stub : pose 6DoF fournie par ARKit sur le téléphone (à venir).
+    """Stub: 6DoF pose provided by ARKit on the phone (to come).
 
-    Contrat attendu : pour chaque frame, `T_world_cam` exprimée dans le repère monde ARKit
-    (y vers le haut chez ARKit → à convertir vers z vers le haut, voir docs/frames.md),
-    horodatée avec la même horloge que les images (`t`), `quality` dérivée de
-    `ARCamera.trackingState` (normal → ok, limited → ok avec n_inliers=0, notAvailable → lost).
+    Expected contract: for each frame, `T_world_cam` expressed in the ARKit world frame
+    (y up in ARKit → to convert to z up, see docs/frames.md),
+    timestamped with the same clock as the images (`t`), `quality` derived from
+    `ARCamera.trackingState` (normal → ok, limited → ok with n_inliers=0, notAvailable → lost).
     """
 
     def __init__(self, *args, **kwargs) -> None:
-        raise NotImplementedError("ArkitPoseSource n'est pas encore implémentée")
+        raise NotImplementedError("ArkitPoseSource is not implemented yet")
 
     def update(self, frame: Frame, depth: Depth | None) -> Pose:  # pragma: no cover
         raise NotImplementedError
 
 
 def make_pose_source(cfg, imu_available: bool = False):
-    """PoseSource selon `pose.source` : `vio` si IMU disponible en mode `auto`, sinon `vo`."""
+    """PoseSource according to `pose.source`: `vio` if the IMU is available in `auto` mode, otherwise `vo`."""
     pc = getattr(cfg, "pose", None)
     mode = str(getattr(pc, "source", "auto") or "auto")
     if mode == "vio" or (mode == "auto" and imu_available):
@@ -68,7 +68,7 @@ def make_pose_source(cfg, imu_available: bool = False):
 
 
 def merge_imu(x):
-    """Entrée IMU du bus : un lot, une liste de lots (accumulés) ou None → un lot ou None."""
+    """IMU input from the bus: a batch, a list of (accumulated) batches or None → a batch or None."""
     if x is None:
         return None
     if isinstance(x, list):
@@ -79,7 +79,7 @@ def merge_imu(x):
 
 
 def run_vo_video(cfg, frames=None, depth_est=None) -> tuple[list[Pose], VisualOdometry]:
-    """Odométrie sur une séquence de frames (par défaut toute la vidéo), profondeur en cache."""
+    """Odometry over a sequence of frames (by default the whole video), depth cached."""
     from visionaid.io.sources import VideoFileSource
     from visionaid.perception.depth import video_depth_estimator
 

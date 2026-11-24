@@ -1,4 +1,4 @@
-"""Lissage de chemin (raccourcis en ligne de vue) et point d'anticipation."""
+"""Path smoothing (line-of-sight shortcuts) and look-ahead point."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import numpy as np
 def line_of_sight(
     cell_cost: np.ndarray, a: tuple[int, int], b: tuple[int, int], max_cost: float = np.inf
 ) -> bool:
-    """Vrai si le segment a→b ne traverse que des cellules franchissables (coût ≤ max_cost)."""
+    """True if the segment a→b only crosses traversable cells (cost ≤ max_cost)."""
     n = int(max(abs(b[0] - a[0]), abs(b[1] - a[1])) * 2) + 1
     ii = np.round(np.linspace(a[0], b[0], n)).astype(int)
     jj = np.round(np.linspace(a[1], b[1], n)).astype(int)
@@ -17,7 +17,7 @@ def line_of_sight(
 
 
 def smooth_path(cell_cost: np.ndarray, path: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Raccourcis gloutons : relie chaque point au plus lointain visible sans augmenter le coût max."""
+    """Greedy shortcuts: links each point to the farthest visible one without increasing the max cost."""
     if path is None or len(path) <= 2:
         return path
     out = [path[0]]
@@ -39,7 +39,7 @@ def polyline_length(pts: np.ndarray) -> float:
 
 
 def lookahead_point(pts: np.ndarray, distance: float) -> np.ndarray:
-    """Point à `distance` (abscisse curviligne) le long de la polyligne, ou son extrémité."""
+    """Point at `distance` (curvilinear abscissa) along the polyline, or its end."""
     if len(pts) == 0:
         return np.full(2, np.nan)
     if len(pts) == 1:

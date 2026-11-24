@@ -11,7 +11,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.data]
 
 @pytest.fixture(scope="module")
 def depth_samples(video_path, cfg):
-    """50 frames : 25 paires consécutives réparties sur la vidéo."""
+    """50 frames: 25 consecutive pairs spread over the video."""
     est = video_depth_estimator(cfg)
     src = VideoFileSource.from_config(cfg)
     starts = set(np.linspace(0, src.frame_count - 2, 25).astype(int).tolist())
@@ -52,7 +52,7 @@ def test_temporal_consistency(depth_samples):
 
 
 def test_scale_with_known_object(video_perception, cfg):
-    """Hauteur 3D de la gourde (masque + profondeur + K) à ±40 % de target.height_m."""
+    """3D height of the bottle (mask + depth + K) within ±40% of target.height_m."""
     dets, _ = video_perception
     est = video_depth_estimator(cfg)
     src = VideoFileSource.from_config(cfg)
@@ -65,7 +65,7 @@ def test_scale_with_known_object(video_perception, cfg):
         x0, y0, x1, y1 = d.boxes[d.target_idx]
         h, w = f.image.shape[:2]
         if x0 < 3 or y0 < 3 or x1 > w - 3 or y1 > h - 3:
-            continue  # objet tronqué par le bord
+            continue  # object cut off by the edge
         masks = unpack_masks(d, w)
         hm = object_height_m(masks[d.target_idx], est(f).depth, f.K)
         if hm is not None:
@@ -77,4 +77,4 @@ def test_scale_with_known_object(video_perception, cfg):
         {"target_height_est_m": med, "target_height_true_m": target, "n_height_frames": len(heights), "scale_factor": cfg.depth.scale_factor},
     )
     assert len(heights) >= 5
-    assert abs(med - target) / target <= 0.40, f"hauteur estimée {med:.3f} m"
+    assert abs(med - target) / target <= 0.40, f"estimated height {med:.3f} m"

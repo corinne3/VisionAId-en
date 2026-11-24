@@ -1,1 +1,1 @@
-"""Calibration du téléphone : caméra (damier) et IMU ↔ caméra (biais, décalage, rotation)."""
+"""Phone calibration: camera (checkerboard) and IMU ↔ camera (bias, offset, rotation)."""

@@ -1,8 +1,8 @@
-"""Shim du module `clip` attendu par Ultralytics pour les prompts texte de YOLOE.
+"""Shim of the `clip` module expected by Ultralytics for YOLOE text prompts.
 
-Ultralytics n'utilise que `clip.clip.tokenize` (tokenizer BPE de CLIP, contexte 77) avant
-d'appeler l'encodeur texte MobileCLIP TorchScript. Le paquet `clip` n'est distribué que via
-GitHub ; on fournit ici un tokenizer équivalent basé sur `transformers.CLIPTokenizer`.
+Ultralytics only uses `clip.clip.tokenize` (CLIP BPE tokenizer, context 77) before
+calling the MobileCLIP TorchScript text encoder. The `clip` package is only distributed via
+GitHub; an equivalent tokenizer based on `transformers.CLIPTokenizer` is provided here.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ CONTEXT_LENGTH = 77
 
 
 def tokenize(texts, context_length: int = CONTEXT_LENGTH, truncate: bool = True) -> torch.Tensor:
-    """Identique à `clip.tokenize` : ids int32 complétés par des zéros."""
+    """Identical to `clip.tokenize`: int32 ids padded with zeros."""
     global _TOKENIZER
     if _TOKENIZER is None:
         from transformers import CLIPTokenizer
@@ -30,7 +30,7 @@ def tokenize(texts, context_length: int = CONTEXT_LENGTH, truncate: bool = True)
         ids = _TOKENIZER(t, add_special_tokens=True)["input_ids"]
         if len(ids) > context_length:
             if not truncate:
-                raise RuntimeError(f"Texte trop long pour le contexte {context_length}: {t}")
+                raise RuntimeError(f"Text too long for context {context_length}: {t}")
             ids = ids[:context_length]
             ids[-1] = _TOKENIZER.eos_token_id
         out[i, : len(ids)] = torch.tensor(ids, dtype=torch.int32)
@@ -38,7 +38,7 @@ def tokenize(texts, context_length: int = CONTEXT_LENGTH, truncate: bool = True)
 
 
 def install() -> None:
-    """Enregistre `clip` dans sys.modules si le vrai paquet est absent."""
+    """Registers `clip` in sys.modules if the real package is missing."""
     try:
         import clip  # noqa: F401
 

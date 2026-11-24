@@ -1,4 +1,4 @@
-"""Phase 18 (données) : VIO contre VO sur les sessions réelles (informatif + garde-fous)."""
+"""Phase 18 (data): VIO vs VO on the real sessions (informative + safeguards)."""
 
 import numpy as np
 import pytest
@@ -13,7 +13,7 @@ pytestmark = [pytest.mark.data, pytest.mark.slow]
 def _find(tag):
     ss = [p for p in list_sessions(resolve_path(load_config().session.dir)) if tag in p.name]
     if not ss:
-        pytest.skip(f"Aucune session « {tag} » (voir docs/checkpoint_enregistrements.md)")
+        pytest.skip(f"No \"{tag}\" session (see docs/checkpoint_enregistrements.md)")
     return ss[-1]
 
 
